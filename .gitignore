@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.local
+.env
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+playwright-report/
+test-results/
+.DS_Store

@@ -1,0 +1,18 @@
+{
+  "name": "@stravaboard/e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --pass-with-no-tests",
+    "build": "echo 'nothing to build'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0",
+    "@stravaboard/shared": "workspace:*",
+    "@types/node": "^22.15.0",
+    "better-sqlite3": "^12.2.0",
+    "typescript": "^5.8.0"
+  }
+}
