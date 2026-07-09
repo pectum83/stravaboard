@@ -7,4 +7,5 @@ export default defineConfig({
   clean: true,
   // Workspace package ships TS source; it must be bundled, not left as an import.
   noExternal: ['@stravaboard/shared'],
+  onSuccess: 'cp -r src/db/migrations dist/migrations',
 })

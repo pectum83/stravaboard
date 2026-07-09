@@ -1,8 +1,10 @@
 import { buildApp } from './app.js'
 import { loadConfig } from './config.js'
+import { openDb } from './db/client.js'
 
 const config = loadConfig()
-const app = await buildApp({ config })
+const db = openDb(config.DATABASE_PATH)
+const app = await buildApp({ config, db })
 
 try {
   await app.listen({ port: config.PORT, host: '0.0.0.0' })
