@@ -22,6 +22,18 @@ export function upsertActivity(db: Db, row: ActivityRow): void {
   db.insert(activities).values(row).onConflictDoUpdate({ target: activities.id, set: rest }).run()
 }
 
+/**
+ * Upsert a synced summary WITHOUT touching streamsStatus on re-sync:
+ * an activity whose streams are already stored must not go back to 'pending'.
+ */
+export function upsertActivitySummary(db: Db, row: ActivityRow): void {
+  const { id, streamsStatus, ...summaryFields } = row
+  db.insert(activities)
+    .values(row)
+    .onConflictDoUpdate({ target: activities.id, set: summaryFields })
+    .run()
+}
+
 /** Page of activities, newest first; `beforeEpoch` is an exclusive keyset cursor. */
 export function listActivities(
   db: Db,

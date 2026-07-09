@@ -3,6 +3,7 @@ import { buildApp } from '../app.js'
 import { loadConfig, type Config } from '../config.js'
 import { openDb, type Db } from '../db/client.js'
 import type { FetchLike } from '../strava/oauth.js'
+import type { SyncService } from '../sync/syncService.js'
 
 export function testDb(): Db {
   return openDb(':memory:')
@@ -16,7 +17,13 @@ export async function testApp(
   overrides: Partial<Config> = {},
   db: Db = testDb(),
   fetchImpl?: FetchLike,
-): Promise<{ app: FastifyInstance; db: Db }> {
-  const app = await buildApp({ config: testConfig(overrides), db, logger: false, fetchImpl })
-  return { app, db }
+): Promise<{ app: FastifyInstance; db: Db; sync: SyncService }> {
+  const { app, sync } = await buildApp({
+    config: testConfig(overrides),
+    db,
+    logger: false,
+    fetchImpl,
+    syncOptions: { sleep: async () => {} },
+  })
+  return { app, db, sync }
 }
