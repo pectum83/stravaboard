@@ -42,15 +42,19 @@ export function windowedVerticalSpeed(
   if (n < 2) return time.map((_, i) => ({ x: distance[i]! / 1000, y: null }))
 
   const half = windowS / 2
+  const maxGap = gapFactor * windowS
   const out = new Array<VSpeedPoint>(n)
   for (let i = 0; i < n; i++) {
     const t = time[i]!
+    // A recording gap (auto-pause) right before this sample breaks the line:
+    // the two sides of a pause are separate efforts.
+    const pause = i > 0 && t - time[i - 1]! > maxGap
     // lo: first index with time >= t - half; hi: last index with time <= t + half
     const lo = lowerBound(time, t - half)
     const hi = upperBound(time, t + half) - 1
     const span = time[hi]! - time[lo]!
     let y: number | null
-    if (span <= 0 || span > gapFactor * windowS) {
+    if (pause || span <= 0 || span > maxGap) {
       y = null
     } else {
       y = ((altitude[hi]! - altitude[lo]!) / span) * 3600
