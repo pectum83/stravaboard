@@ -22,6 +22,18 @@ export interface SyncServiceOptions {
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
+/** Consecutive no-progress network failures tolerated before the sync errors out. */
+const MAX_NETWORK_FAILURES = 6
+
+/**
+ * Undici surfaces connection drops, DNS blips and timeouts as
+ * `TypeError: fetch failed`; those deserve a retry, unlike HTTP-level
+ * errors (StravaApiError) or bugs.
+ */
+function isTransientNetworkError(err: unknown): boolean {
+  return err instanceof TypeError
+}
+
 /**
  * Incremental, resumable Strava sync.
  *
@@ -112,23 +124,50 @@ export class SyncService {
     }
   }
 
-  /** Runs `work`, sleeping through Strava rate-limit windows as needed. */
+  /**
+   * Runs `work`, sleeping through Strava rate-limit windows and retrying
+   * transient network failures with backoff. Progress is checkpointed, so
+   * re-running `work` after a mid-flight failure is safe; any progress since
+   * the last failure resets the retry budget — only a *persistently* dead
+   * network exhausts it.
+   */
   private async retryingOnRateLimit(work: () => Promise<void>): Promise<void> {
+    let networkFailures = 0
     for (;;) {
+      const progressBefore = this.progressMarker()
       try {
         await work()
         return
       } catch (err) {
-        if (!(err instanceof RateLimitError)) throw err
-        this.state = 'waiting_rate_limit'
-        this.resumeAtMs = err.resumeAtMs
-        const waitMs = Math.max(0, err.resumeAtMs - this.nowMs()) + 1000
-        this.log(`rate limited, resuming at ${new Date(err.resumeAtMs).toISOString()}`)
-        await this.sleep(waitMs)
-        this.state = 'syncing'
-        this.resumeAtMs = null
+        if (err instanceof RateLimitError) {
+          this.state = 'waiting_rate_limit'
+          this.resumeAtMs = err.resumeAtMs
+          const waitMs = Math.max(0, err.resumeAtMs - this.nowMs()) + 1000
+          this.log(`rate limited, resuming at ${new Date(err.resumeAtMs).toISOString()}`)
+          await this.sleep(waitMs)
+          this.state = 'syncing'
+          this.resumeAtMs = null
+          continue
+        }
+        if (isTransientNetworkError(err)) {
+          if (this.progressMarker() !== progressBefore) networkFailures = 0
+          networkFailures++
+          if (networkFailures > MAX_NETWORK_FAILURES) throw err
+          const backoffMs = Math.min(60_000, 2000 * 2 ** (networkFailures - 1))
+          this.log(
+            `network error (${(err as Error).message}), retry ${networkFailures}/${MAX_NETWORK_FAILURES} in ${backoffMs / 1000}s`,
+          )
+          await this.sleep(backoffMs)
+          continue
+        }
+        throw err
       }
     }
+  }
+
+  /** Cheap fingerprint of sync progress, used to reset the network-retry budget. */
+  private progressMarker(): string {
+    return `${this.fetched}:${countPendingStreams(this.db)}`
   }
 
   private async fetchNewSummaries(): Promise<void> {

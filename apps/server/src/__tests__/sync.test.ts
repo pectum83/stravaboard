@@ -4,6 +4,7 @@ import { getStreams } from '../repositories/streams.repo.js'
 import { getSyncState } from '../repositories/syncState.repo.js'
 import { saveTokens } from '../repositories/tokens.repo.js'
 import { StravaClient } from '../strava/client.js'
+import type { FetchLike } from '../strava/oauth.js'
 import { SyncService } from '../sync/syncService.js'
 import { testConfig, testDb } from './helpers.js'
 import { makeActivity, stravaStub, type StravaStubOptions } from './stravaStub.js'
@@ -117,6 +118,46 @@ describe('SyncService', () => {
     await runSync(again.sync)
     expect(getActivity(db, 101)?.streamsStatus).toBe('done')
     expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
+  })
+
+  it('retries transient network failures and completes the sync', async () => {
+    const db = connectedDb()
+    const stub = stravaStub({ activities: [A1, A2] })
+    let failuresLeft = 3
+    const flaky: typeof stub.fetchImpl = async (input, init) => {
+      if (failuresLeft > 0 && String(input).includes('/streams')) {
+        failuresLeft--
+        throw new TypeError('fetch failed')
+      }
+      return stub.fetchImpl(input, init)
+    }
+    const client = new StravaClient(config, db, flaky)
+    const sleeps: number[] = []
+    const sync = new SyncService(db, client, {
+      sleep: async (ms) => {
+        sleeps.push(ms)
+      },
+    })
+    sync.start()
+    await sync.whenIdle()
+    expect(sync.status().state).toBe('idle')
+    expect(getActivity(db, 101)?.streamsStatus).toBe('done')
+    expect(getActivity(db, 102)?.streamsStatus).toBe('done')
+    // Exponential backoff: 2s, 4s, 8s
+    expect(sleeps).toEqual([2000, 4000, 8000])
+  })
+
+  it('gives up after persistent network failures with no progress', async () => {
+    const db = connectedDb()
+    const dead: FetchLike = async () => {
+      throw new TypeError('fetch failed')
+    }
+    const client = new StravaClient(config, db, dead)
+    const sync = new SyncService(db, client, { sleep: async () => {} })
+    sync.start()
+    await sync.whenIdle()
+    expect(sync.status().state).toBe('error')
+    expect(sync.status().error).toBe('fetch failed')
   })
 
   it('reports an error state on unexpected API failures', async () => {
