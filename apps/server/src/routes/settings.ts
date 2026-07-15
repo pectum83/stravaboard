@@ -9,6 +9,7 @@ const settingsSchema = z.object({
   longWindowS: z.number().int().min(1).max(7200),
   ascentMinGainM: z.number().min(1).max(1000),
   ascentDescentToleranceM: z.number().min(0).max(500),
+  pauseThresholdS: z.number().int().min(5).max(600),
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {

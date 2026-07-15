@@ -31,18 +31,21 @@ export interface Settings {
   shortWindowS: number
   /** Window for the long-term vertical-speed series, seconds. */
   longWindowS: number
-  /** Minimum total gain for a climb to count as an ascent, meters. */
+  /** Minimum total gain (drop) for an ascent or descent segment to count, meters. */
   ascentMinGainM: number
-  /** Maximum drop inside an ascent before it ends, meters. */
+  /** Maximum counter-move inside an ascent or descent before it ends, meters. */
   ascentDescentToleranceM: number
+  /** Minimum stationary duration excluded from ascent/descent means, seconds. */
+  pauseThresholdS: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  instantWindowS: 2,
-  shortWindowS: 60,
+  instantWindowS: 60,
+  shortWindowS: 120,
   longWindowS: 300,
   ascentMinGainM: 30,
   ascentDescentToleranceM: 10,
+  pauseThresholdS: 30,
 }
 
 export type SyncStateName = 'idle' | 'syncing' | 'waiting_rate_limit' | 'error'

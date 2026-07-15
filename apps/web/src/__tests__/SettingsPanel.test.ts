@@ -21,13 +21,14 @@ describe('SettingsPanel', () => {
     vi.mocked(api.saveSettings).mockResolvedValue({ ...DEFAULT_SETTINGS })
   })
 
-  it('renders the five setting fields with current values', () => {
+  it('renders the six setting fields with current values', () => {
     const wrapper = mount(SettingsPanel)
     const inputs = wrapper.findAll('input')
-    expect(inputs).toHaveLength(5)
-    expect((inputs[0]!.element as HTMLInputElement).value).toBe('2')
-    expect((inputs[1]!.element as HTMLInputElement).value).toBe('60')
+    expect(inputs).toHaveLength(6)
+    expect((inputs[0]!.element as HTMLInputElement).value).toBe('60')
+    expect((inputs[1]!.element as HTMLInputElement).value).toBe('120')
     expect((inputs[2]!.element as HTMLInputElement).value).toBe('300')
+    expect((inputs[5]!.element as HTMLInputElement).value).toBe('30')
   })
 
   it('updates the store immediately and saves debounced', async () => {

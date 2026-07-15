@@ -17,8 +17,21 @@ const fields: Field[] = [
   { key: 'instantWindowS', label: 'Instant window', unit: 's', min: 1, max: 600 },
   { key: 'shortWindowS', label: 'Short-term window', unit: 's', min: 1, max: 3600 },
   { key: 'longWindowS', label: 'Long-term window', unit: 's', min: 1, max: 7200 },
-  { key: 'ascentMinGainM', label: 'Ascent min gain', unit: 'm', min: 1, max: 1000 },
-  { key: 'ascentDescentToleranceM', label: 'Descent tolerance', unit: 'm', min: 0, max: 500 },
+  {
+    key: 'ascentMinGainM',
+    label: 'Segment min gain (ascent & descent)',
+    unit: 'm',
+    min: 1,
+    max: 1000,
+  },
+  {
+    key: 'ascentDescentToleranceM',
+    label: 'Segment tolerance (ascent & descent)',
+    unit: 'm',
+    min: 0,
+    max: 500,
+  },
+  { key: 'pauseThresholdS', label: 'Pause threshold', unit: 's', min: 5, max: 600 },
 ]
 
 const values = computed(() => store.settings)

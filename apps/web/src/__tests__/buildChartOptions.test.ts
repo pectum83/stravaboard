@@ -21,8 +21,8 @@ describe('buildChartOptions', () => {
     const options = buildChartOptions(climbStreams(), DEFAULT_SETTINGS)
     const series = options.series as LineSeriesOption[]
     expect(series.map((s) => s.name)).toEqual([
-      'Instant (2s)',
-      'Short (60s)',
+      'Instant (60s)',
+      'Short (120s)',
       'Long (5min)',
       'Ascent mean',
     ])

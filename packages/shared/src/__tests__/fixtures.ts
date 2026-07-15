@@ -75,3 +75,56 @@ export function rampWithGap(durationS: number, gapS: number): Streams {
   for (let i = mid; i < time.length; i++) time[i] = time[i]! + gapS
   return { time, distance, altitude }
 }
+
+export interface StreamsWithLatlng extends Streams {
+  latlng: [number, number][]
+}
+
+/** Meters of northward travel per degree of latitude. */
+const M_PER_DEG_LAT = 111_320
+
+/**
+ * Derive a GPS track from the distance stream: a straight line heading north
+ * from [45.1, 6.05], so latlng displacement matches distance exactly.
+ */
+export function withLatlng(streams: Streams): StreamsWithLatlng {
+  const latlng = streams.distance.map((d): [number, number] => [45.1 + d / M_PER_DEG_LAT, 6.05])
+  return { ...streams, latlng }
+}
+
+/**
+ * Deterministic GPS jitter: offsets each point by up to `amplitudeM` meters
+ * (golden-angle phase, no randomness so tests are reproducible).
+ */
+export function jitterLatlng(latlng: [number, number][], amplitudeM: number): [number, number][] {
+  return latlng.map(([lat, lng], i) => [
+    lat + (amplitudeM * Math.sin(i * 2.399)) / M_PER_DEG_LAT,
+    lng,
+  ])
+}
+
+/**
+ * Insert a standstill after sample `atIndex`: `durationS` extra 1 Hz samples
+ * repeating that sample's position, distance and altitude; later samples keep
+ * their values with time shifted by `durationS`.
+ */
+export function insertPause(
+  streams: StreamsWithLatlng,
+  atIndex: number,
+  durationS: number,
+): StreamsWithLatlng {
+  const time: number[] = []
+  const distance: number[] = []
+  const altitude: number[] = []
+  const latlng: [number, number][] = []
+  const push = (t: number, i: number) => {
+    time.push(t)
+    distance.push(streams.distance[i]!)
+    altitude.push(streams.altitude[i]!)
+    latlng.push(streams.latlng[i]!)
+  }
+  for (let i = 0; i <= atIndex; i++) push(streams.time[i]!, i)
+  for (let k = 1; k <= durationS; k++) push(streams.time[atIndex]! + k, atIndex)
+  for (let i = atIndex + 1; i < streams.time.length; i++) push(streams.time[i]! + durationS, i)
+  return { time, distance, altitude, latlng }
+}
