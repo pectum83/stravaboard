@@ -6,9 +6,11 @@ import { useActivitiesStore } from '../stores/activities'
 import { useSettingsStore } from '../stores/settings'
 import { useStreams } from '../composables/useStreams'
 import ActivityList from '../components/ActivityList.vue'
+import ActivityStats from '../components/ActivityStats.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import SyncStatusBar from '../components/SyncStatusBar.vue'
 import VerticalSpeedChart from '../components/VerticalSpeedChart.vue'
+import { computeVSpeedModel } from '../chart/computeVSpeed'
 
 const activitiesStore = useActivitiesStore()
 const settingsStore = useSettingsStore()
@@ -23,6 +25,13 @@ const selectedActivity = computed(
   () => activities.value.find((a) => a.id === selectedId.value) ?? null,
 )
 const hasAltitude = computed(() => (streams.value?.altitude?.length ?? 0) > 0)
+
+const model = computed(() =>
+  streams.value && hasAltitude.value ? computeVSpeedModel(streams.value, settings.value) : null,
+)
+
+/** Stream index under the chart cursor (drives the map marker). */
+const hoverIndex = ref<number | null>(null)
 
 onMounted(async () => {
   const status = await api.authStatus()
@@ -57,7 +66,10 @@ onMounted(async () => {
           />
         </aside>
         <main>
-          <SettingsPanel />
+          <div class="controls">
+            <SettingsPanel />
+            <ActivityStats v-if="model" :ascent="model.ascentStats" :descent="model.descentStats" />
+          </div>
           <section class="chart-area">
             <p v-if="selectedId === null" class="placeholder">
               Select an activity to see its vertical speed profile.
@@ -67,7 +79,12 @@ onMounted(async () => {
               <strong>{{ selectedActivity?.name }}</strong> has no elevation data.
             </p>
             <p v-else-if="streamsError" class="placeholder error">{{ streamsError }}</p>
-            <VerticalSpeedChart v-else-if="streams" :streams="streams" :settings="settings" />
+            <VerticalSpeedChart
+              v-else-if="model"
+              :model="model"
+              :settings="settings"
+              @hover-index="hoverIndex = $event"
+            />
           </section>
         </main>
       </div>
@@ -118,6 +135,13 @@ main {
   gap: 12px;
   padding: 12px;
   min-width: 0;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .chart-area {

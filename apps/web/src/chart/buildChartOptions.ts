@@ -1,67 +1,38 @@
 import type { EChartsOption, LineSeriesOption } from 'echarts'
-import {
-  detectAscents,
-  medianFilter,
-  windowedVerticalSpeed,
-  type ActivityStreams,
-  type Settings,
-  type VSpeedPoint,
-} from '@stravaboard/shared'
+import type { Ascent, Settings, VSpeedPoint } from '@stravaboard/shared'
+import type { VSpeedModel } from './computeVSpeed'
 
-// Categorical slots 1-4 of the validated palette (see dataviz reference).
-// Aqua and yellow sit below 3:1 on the light surface — the relief rule is
-// covered by the direct end-labels on every series.
+// Categorical slots 1, 5, 4, 2, 3 of the validated palette (see dataviz
+// reference). Aqua, yellow and magenta sit below 3:1 on the light surface —
+// the relief rule is covered by the direct end-labels on every series.
 const COLORS = {
   instant: '#2a78d6', // blue
   short: '#1baf7a', // aqua
   long: '#eda100', // yellow
   ascent: '#008300', // green
+  descent: '#e87ba4', // magenta
 }
 const INK_MUTED = '#898781'
 const GRID_LINE = '#e1e0d9'
 const AXIS_LINE = '#c3c2b7'
 
-/** Altitude median-filter width for the instant series (samples). */
-const INSTANT_SMOOTHING = 5
-
-export function buildChartOptions(streams: ActivityStreams, settings: Settings): EChartsOption {
-  const { time, distance } = streams
-  const altitude = streams.altitude ?? []
-
-  const smoothed = medianFilter(altitude, INSTANT_SMOOTHING)
-  const instant = windowedVerticalSpeed(time, distance, smoothed, {
-    windowS: settings.instantWindowS,
-  })
-  const short = windowedVerticalSpeed(time, distance, altitude, {
-    windowS: settings.shortWindowS,
-  })
-  const long = windowedVerticalSpeed(time, distance, altitude, {
-    windowS: settings.longWindowS,
-  })
-  const ascents = detectAscents(time, distance, altitude, {
-    minGainM: settings.ascentMinGainM,
-    descentToleranceM: settings.ascentDescentToleranceM,
-  })
-
-  // Each ascent renders as one horizontal segment at its mean speed,
-  // with a null between segments to break the line.
-  const ascentData: ([number, number] | null)[] = []
-  for (const a of ascents) {
-    ascentData.push([a.startKm, a.meanVSpeed], [a.endKm, a.meanVSpeed], null)
-  }
-
+export function buildChartOptions(model: VSpeedModel, settings: Settings): EChartsOption {
   const series: LineSeriesOption[] = [
-    lineSeries(`Instant (${settings.instantWindowS}s)`, toPairs(instant), COLORS.instant, {
+    lineSeries(`Instant (${settings.instantWindowS}s)`, toPairs(model.instant), COLORS.instant, {
       // The instant series is intrinsically spiky; keep it recessive so the
       // smoother series stay readable.
       lineStyle: { width: 1, opacity: 0.35 },
       sampling: 'lttb',
     }),
-    lineSeries(`Short (${settings.shortWindowS}s)`, toPairs(short), COLORS.short, {}),
-    lineSeries(`Long (${formatWindow(settings.longWindowS)})`, toPairs(long), COLORS.long, {}),
-    lineSeries('Ascent mean', ascentData, COLORS.ascent, {
-      lineStyle: { width: 3 },
-    }),
+    lineSeries(`Short (${settings.shortWindowS}s)`, toPairs(model.short), COLORS.short, {}),
+    lineSeries(
+      `Long (${formatWindow(settings.longWindowS)})`,
+      toPairs(model.long),
+      COLORS.long,
+      {},
+    ),
+    segmentSeries('Ascent mean', model.ascents, COLORS.ascent),
+    segmentSeries('Descent mean', model.descents, COLORS.descent),
   ]
 
   return {
@@ -107,14 +78,14 @@ function toPairs(points: VSpeedPoint[]): ([number, number] | null)[] {
 
 function lineSeries(
   name: string,
-  data: ([number, number] | null)[],
+  data: LineSeriesOption['data'],
   color: string,
   extra: Partial<LineSeriesOption>,
 ): LineSeriesOption {
   return {
     name,
     type: 'line',
-    data: data as LineSeriesOption['data'],
+    data,
     color,
     showSymbol: false,
     connectNulls: false,
@@ -129,6 +100,34 @@ function lineSeries(
     lineStyle: { width: 2 },
     emphasis: { focus: 'series' },
     ...extra,
+  }
+}
+
+/**
+ * Ascent/descent means render as one horizontal segment per detected climb
+ * (nulls break the line), each labeled with its value at the right end.
+ * Per-datapoint labels only render on symbols, so the series keeps invisible
+ * symbols (`symbolSize: 0`) instead of `showSymbol: false`.
+ */
+function segmentSeries(name: string, segments: Ascent[], color: string): LineSeriesOption {
+  const data: LineSeriesOption['data'] = []
+  for (const s of segments) {
+    data.push([s.startKm, s.meanVSpeed], {
+      value: [s.endKm, s.meanVSpeed],
+      label: {
+        show: true,
+        position: 'right',
+        formatter: `${Math.round(s.meanVSpeed)}`,
+        color,
+        fontSize: 11,
+      },
+    })
+    data.push(null as unknown as (typeof data)[number])
+  }
+  return {
+    ...lineSeries(name, data, color, { lineStyle: { width: 3 } }),
+    showSymbol: true,
+    symbolSize: 0,
   }
 }
 

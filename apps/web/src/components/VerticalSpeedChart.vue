@@ -10,8 +10,10 @@ import {
   TooltipComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
-import type { ActivityStreams, Settings } from '@stravaboard/shared'
+import type { Settings } from '@stravaboard/shared'
 import { buildChartOptions } from '../chart/buildChartOptions'
+import type { VSpeedModel } from '../chart/computeVSpeed'
+import { nearestIndexByKm } from '../chart/cursor'
 
 use([
   CanvasRenderer,
@@ -23,15 +25,40 @@ use([
 ])
 
 const props = defineProps<{
-  streams: ActivityStreams
+  model: VSpeedModel
   settings: Settings
 }>()
 
-const options = computed(() => buildChartOptions(props.streams, props.settings))
+const emit = defineEmits<{
+  /** Stream index under the chart cursor, null when the pointer leaves. */
+  hoverIndex: [index: number | null]
+}>()
+
+const options = computed(() => buildChartOptions(props.model, props.settings))
+
+interface AxisPointerEvent {
+  axesInfo?: { axisDim: string; value: number }[]
+}
+
+function onAxisPointer(event: AxisPointerEvent): void {
+  const km = event.axesInfo?.find((a) => a.axisDim === 'x')?.value
+  if (km === undefined) return
+  emit('hoverIndex', nearestIndexByKm(props.model.streams.distance, km))
+}
+
+function onGlobalOut(): void {
+  emit('hoverIndex', null)
+}
 </script>
 
 <template>
-  <VChart class="chart" :option="options" autoresize />
+  <VChart
+    class="chart"
+    :option="options"
+    autoresize
+    @updateaxispointer="onAxisPointer"
+    @globalout="onGlobalOut"
+  />
 </template>
 
 <style scoped>
