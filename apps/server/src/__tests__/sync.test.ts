@@ -1,14 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { getActivity, listActivities, upsertActivity } from '../repositories/activities.repo.js'
-import { getStreams } from '../repositories/streams.repo.js'
+import {
+  countStreamsMissingLatlng,
+  getActivity,
+  listActivities,
+  upsertActivity,
+  type ActivityRow,
+} from '../repositories/activities.repo.js'
+import { getStreams, saveStreams } from '../repositories/streams.repo.js'
 import { getSyncState } from '../repositories/syncState.repo.js'
 import { saveTokens } from '../repositories/tokens.repo.js'
 import { StravaClient } from '../strava/client.js'
 import type { FetchLike } from '../strava/oauth.js'
 import { SyncService } from '../sync/syncService.js'
 import { testConfig, testDb } from './helpers.js'
-import { makeActivity, stravaStub, type StravaStubOptions } from './stravaStub.js'
+import { makeActivity, simpleStreams, stravaStub, type StravaStubOptions } from './stravaStub.js'
 import type { Db } from '../db/client.js'
+
+function makeRow(id: number, startDate: string): ActivityRow {
+  return {
+    id,
+    name: `Activity ${id}`,
+    sportType: 'TrailRun',
+    startDate,
+    startDateEpoch: Date.parse(startDate) / 1000,
+    distanceM: 1000,
+    movingTimeS: 600,
+    elapsedTimeS: 600,
+    totalElevationGainM: 100,
+    streamsStatus: 'pending',
+    rawSummary: '{}',
+  }
+}
 
 const config = testConfig({
   STRAVA_API_BASE: 'https://strava.test/api/v3',
@@ -174,6 +196,65 @@ describe('SyncService', () => {
     await sync.whenIdle()
     expect(sync.status().state).toBe('error')
     expect(sync.status().error).toContain('500')
+  })
+
+  it('backfills latlng for streams stored before the column existed', async () => {
+    const db = connectedDb()
+    // Legacy state: activity synced 'done' with streams that have no latlng.
+    upsertActivity(db, {
+      ...makeRow(201, '2025-01-01T08:00:00Z'),
+      streamsStatus: 'done',
+    })
+    saveStreams(db, 201, { time: [0, 1], distance: [0, 3], altitude: [5, 6], latlng: null }, '2025')
+    expect(countStreamsMissingLatlng(db)).toBe(1)
+
+    const { sync, stub } = makeSync(db, { activities: [] })
+    await runSync(sync)
+
+    expect(stub.requests.filter((r) => r.includes('/activities/201/streams'))).toHaveLength(1)
+    expect(getStreams(db, 201)?.latlng).toEqual(simpleStreams.latlng!.data)
+    expect(sync.status().pendingLatlngBackfill).toBe(0)
+
+    // A second sync has nothing left to backfill.
+    const again = makeSync(db, { activities: [] })
+    await runSync(again.sync)
+    expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
+  })
+
+  it('marks activities whose streams are gone as having no GPS, exactly once', async () => {
+    const db = connectedDb()
+    upsertActivity(db, {
+      ...makeRow(202, '2025-01-01T08:00:00Z'),
+      streamsStatus: 'done',
+    })
+    saveStreams(db, 202, { time: [0, 1], distance: [0, 3], altitude: [5, 6], latlng: null }, '2025')
+
+    const { sync } = makeSync(db, { activities: [], noStreams: [202] })
+    await runSync(sync)
+    expect(sync.status().state).toBe('idle')
+    // Terminal '[]' written: served as null, out of the backfill set for good.
+    expect(getStreams(db, 202)?.latlng).toBeNull()
+    expect(getStreams(db, 202)?.altitude).toEqual([5, 6]) // existing streams kept
+    expect(countStreamsMissingLatlng(db)).toBe(0)
+
+    const again = makeSync(db, { activities: [], noStreams: [202] })
+    await runSync(again.sync)
+    expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
+  })
+
+  it('finishes the backfill through a rate-limit window', async () => {
+    const db = connectedDb()
+    upsertActivity(db, {
+      ...makeRow(203, '2025-01-01T08:00:00Z'),
+      streamsStatus: 'done',
+    })
+    saveStreams(db, 203, { time: [0], distance: [0], altitude: [5], latlng: null }, '2025')
+
+    const { sync, sleeps } = makeSync(db, { activities: [], rateLimit429Count: 1 })
+    await runSync(sync)
+    expect(sleeps.length).toBeGreaterThan(0)
+    expect(sync.status().state).toBe('idle')
+    expect(getStreams(db, 203)?.latlng).toEqual(simpleStreams.latlng!.data)
   })
 
   it('retries streams left pending by a previous interrupted run', async () => {

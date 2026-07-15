@@ -10,6 +10,8 @@ const envSchema = z.object({
   STRAVA_OAUTH_BASE: z.string().url().default('https://www.strava.com/oauth'),
   /** Absolute path of the built web app to serve statically; empty in dev. */
   WEB_DIST_PATH: z.string().default(''),
+  /** MapTiler API key for map layers; empty disables satellite/3D (OSM fallback). */
+  MAPTILER_KEY: z.string().default(''),
   /** Where the OAuth callback sends the browser back to ('/' when the server serves the app). */
   WEB_APP_URL: z.string().default('/'),
 })

@@ -12,6 +12,15 @@ interface Profile {
   time: number[]
   distance: number[]
   altitude: number[] | null
+  latlng: [number, number][] | null
+}
+
+/** Meters of northward travel per degree of latitude. */
+const M_PER_DEG_LAT = 111_320
+
+/** GPS track heading north from [45.1, 6.05], displacement matching distance. */
+function trackFromDistance(distance: number[]): [number, number][] {
+  return distance.map((d): [number, number] => [45.1 + d / M_PER_DEG_LAT, 6.05])
 }
 
 /** A mountain run: two climbs (400 m and 250 m) separated by a descent, with noise. */
@@ -40,7 +49,7 @@ function mountainProfile(): Profile {
       t++
     }
   }
-  return { time, distance, altitude }
+  return { time, distance, altitude, latlng: trackFromDistance(distance) }
 }
 
 /** A flat road run. */
@@ -53,7 +62,7 @@ function flatProfile(): Profile {
     distance.push(t * 3.2)
     altitude.push(120 + 0.2 * Math.sin(t / 60))
   }
-  return { time, distance, altitude }
+  return { time, distance, altitude, latlng: trackFromDistance(distance) }
 }
 
 export function seed(dbPath: string): void {

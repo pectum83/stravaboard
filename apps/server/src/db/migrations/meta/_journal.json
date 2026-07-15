@@ -8,6 +8,13 @@
       "when": 1783596431857,
       "tag": "0000_classy_vulture",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784137309343,
+      "tag": "0001_add_latlng",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,12 @@ export const activityStreams = sqliteTable('activity_streams', {
   distance: text('distance').notNull(),
   /** JSON number[] or null — altitude in meters. */
   altitude: text('altitude'),
+  /**
+   * JSON [lat,lng][] — GPS track. SQL NULL means "not fetched yet" (row
+   * predates the column, awaiting backfill); '[]' means "activity has no GPS"
+   * (terminal, never re-fetched).
+   */
+  latlng: text('latlng'),
   fetchedAt: text('fetched_at').notNull(),
 })
 

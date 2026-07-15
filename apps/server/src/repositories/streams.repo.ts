@@ -14,6 +14,8 @@ export function saveStreams(
     time: JSON.stringify(streams.time),
     distance: JSON.stringify(streams.distance),
     altitude: streams.altitude === null ? null : JSON.stringify(streams.altitude),
+    // null stays SQL NULL ("not fetched yet"); [] is stored as '[]' ("no GPS").
+    latlng: streams.latlng === null ? null : JSON.stringify(streams.latlng),
     fetchedAt,
   }
   const { activityId: _id, ...rest } = values
@@ -30,9 +32,12 @@ export function getStreams(db: Db, activityId: number): ActivityStreams | null {
     .where(eq(activityStreams.activityId, activityId))
     .get()
   if (!row) return null
+  const latlng = row.latlng === null ? null : (JSON.parse(row.latlng) as [number, number][])
   return {
     time: JSON.parse(row.time) as number[],
     distance: JSON.parse(row.distance) as number[],
     altitude: row.altitude === null ? null : (JSON.parse(row.altitude) as number[]),
+    // Clients see null both for "no GPS" and "not backfilled yet".
+    latlng: latlng !== null && latlng.length > 0 ? latlng : null,
   }
 }

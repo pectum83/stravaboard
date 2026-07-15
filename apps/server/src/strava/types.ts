@@ -25,4 +25,5 @@ export interface StravaStreamSet {
   time?: { data: number[] }
   distance?: { data: number[] }
   altitude?: { data: number[] }
+  latlng?: { data: [number, number][] }
 }

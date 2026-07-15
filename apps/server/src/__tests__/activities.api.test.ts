@@ -51,11 +51,15 @@ describe('activities API', () => {
   it('serves stored streams', async () => {
     const db = testDb()
     upsertActivity(db, activity(1, 1000))
-    saveStreams(db, 1, { time: [0, 1], distance: [0, 5], altitude: [10, 11] }, '2026-01-01')
+    const latlng: [number, number][] = [
+      [45.1, 6.05],
+      [45.10005, 6.05],
+    ]
+    saveStreams(db, 1, { time: [0, 1], distance: [0, 5], altitude: [10, 11], latlng }, '2026-01-01')
     const { app } = await testApp({}, db)
     const res = await app.inject({ method: 'GET', url: '/api/activities/1/streams' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ time: [0, 1], distance: [0, 5], altitude: [10, 11] })
+    expect(res.json()).toEqual({ time: [0, 1], distance: [0, 5], altitude: [10, 11], latlng })
   })
 
   it('404s with the streams status when streams are absent', async () => {

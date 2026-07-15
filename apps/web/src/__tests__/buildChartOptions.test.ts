@@ -13,7 +13,7 @@ function climbStreams(): ActivityStreams {
     distance.push(t)
     altitude.push(500 + t * 0.5)
   }
-  return { time, distance, altitude }
+  return { time, distance, altitude, latlng: null }
 }
 
 describe('buildChartOptions', () => {
@@ -52,7 +52,10 @@ describe('buildChartOptions', () => {
   })
 
   it('handles missing altitude as an empty chart rather than crashing', () => {
-    const options = buildChartOptions({ time: [], distance: [], altitude: null }, DEFAULT_SETTINGS)
+    const options = buildChartOptions(
+      { time: [], distance: [], altitude: null, latlng: null },
+      DEFAULT_SETTINGS,
+    )
     const series = options.series as LineSeriesOption[]
     expect(series).toHaveLength(4)
     expect(series[0]!.data).toEqual([])

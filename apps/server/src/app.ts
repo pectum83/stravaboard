@@ -3,6 +3,7 @@ import type { Config } from './config.js'
 import type { Db } from './db/client.js'
 import { registerActivityRoutes } from './routes/activities.js'
 import { registerAuthRoutes } from './routes/auth.js'
+import { registerConfigRoutes } from './routes/config.js'
 import { registerSettingsRoutes } from './routes/settings.js'
 import { registerSyncRoutes } from './routes/sync.js'
 import { StravaClient } from './strava/client.js'
@@ -39,6 +40,7 @@ export async function buildApp({
   app.get('/api/health', async () => ({ status: 'ok' }))
 
   registerAuthRoutes(app, config, db, fetchImpl, () => sync.start())
+  registerConfigRoutes(app, config)
   registerSettingsRoutes(app, db)
   registerSyncRoutes(app, sync)
   registerActivityRoutes(app, db)

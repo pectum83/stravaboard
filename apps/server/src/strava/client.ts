@@ -52,7 +52,10 @@ export class StravaClient {
   }
 
   async getStreams(activityId: number) {
-    const params = new URLSearchParams({ keys: 'time,distance,altitude', key_by_type: 'true' })
+    const params = new URLSearchParams({
+      keys: 'time,distance,altitude,latlng',
+      key_by_type: 'true',
+    })
     return this.get<StravaStreamSet>(`/activities/${activityId}/streams?${params}`)
   }
 

@@ -32,6 +32,14 @@ export const simpleStreams: StravaStreamSet = {
   time: { data: [0, 1, 2, 3] },
   distance: { data: [0, 3, 6, 9] },
   altitude: { data: [100, 101, 102, 103] },
+  latlng: {
+    data: [
+      [45.1, 6.05],
+      [45.10003, 6.05],
+      [45.10006, 6.05],
+      [45.10009, 6.05],
+    ],
+  },
 }
 
 /**

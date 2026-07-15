@@ -1,17 +1,19 @@
-import type { SyncStatus } from '@stravaboard/shared'
+import type { ActivityStreams, SyncStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
 import {
   countPendingStreams,
+  countStreamsMissingLatlng,
   listPendingStreams,
+  listStreamsMissingLatlng,
   setStreamsStatus,
   upsertActivitySummary,
   type ActivityRow,
 } from '../repositories/activities.repo.js'
-import { saveStreams } from '../repositories/streams.repo.js'
+import { getStreams, saveStreams } from '../repositories/streams.repo.js'
 import { getSyncState, saveSyncState } from '../repositories/syncState.repo.js'
 import { NotFoundError, RateLimitError, type StravaClient } from '../strava/client.js'
 import { NotConnectedError } from '../strava/oauth.js'
-import type { StravaSummaryActivity } from '../strava/types.js'
+import type { StravaStreamSet, StravaSummaryActivity } from '../strava/types.js'
 
 export interface SyncServiceOptions {
   perPage?: number
@@ -42,6 +44,12 @@ function isTransientNetworkError(err: unknown): boolean {
  * for every pending activity in start order; the checkpoint only advances
  * once an activity's streams are stored, so a crash or rate-limit pause
  * resumes exactly where it left off.
+ *
+ * Pass 3 backfills the GPS track for activities synced before the latlng
+ * column existed. It runs last so a large backfill never starves new
+ * activities, and every visit writes a non-NULL latlng value ('[]' when the
+ * activity has no GPS), so each legacy activity is re-fetched at most once
+ * ever; progress lives in the column itself, making the pass resumable.
  */
 export class SyncService {
   private state: SyncStatus['state'] = 'idle'
@@ -90,6 +98,7 @@ export class SyncService {
       state: this.state,
       fetchedActivities: this.fetched,
       pendingStreams: countPendingStreams(this.db),
+      pendingLatlngBackfill: countStreamsMissingLatlng(this.db),
       ...(this.resumeAtMs !== null && this.state === 'waiting_rate_limit'
         ? { rateLimitResumeAt: new Date(this.resumeAtMs).toISOString() }
         : {}),
@@ -106,6 +115,7 @@ export class SyncService {
     try {
       await this.retryingOnRateLimit(() => this.fetchNewSummaries())
       await this.retryingOnRateLimit(() => this.fetchPendingStreams())
+      await this.retryingOnRateLimit(() => this.backfillLatlng())
       this.state = 'idle'
       saveSyncState(this.db, { status: 'idle' })
       this.log(`sync done: ${this.fetched} activities fetched`)
@@ -167,7 +177,7 @@ export class SyncService {
 
   /** Cheap fingerprint of sync progress, used to reset the network-retry budget. */
   private progressMarker(): string {
-    return `${this.fetched}:${countPendingStreams(this.db)}`
+    return `${this.fetched}:${countPendingStreams(this.db)}:${countStreamsMissingLatlng(this.db)}`
   }
 
   private async fetchNewSummaries(): Promise<void> {
@@ -197,16 +207,7 @@ export class SyncService {
   private async fetchStreamsFor(activity: ActivityRow): Promise<void> {
     try {
       const set = await this.client.getStreams(activity.id)
-      saveStreams(
-        this.db,
-        activity.id,
-        {
-          time: set.time?.data ?? [],
-          distance: set.distance?.data ?? [],
-          altitude: set.altitude?.data ?? null,
-        },
-        new Date(this.nowMs()).toISOString(),
-      )
+      saveStreams(this.db, activity.id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
       setStreamsStatus(this.db, activity.id, 'done')
     } catch (err) {
       // Manual/indoor activities have no streams; that is a terminal state, not an error.
@@ -217,6 +218,50 @@ export class SyncService {
     if (activity.startDateEpoch > checkpoint) {
       saveSyncState(this.db, { lastActivityStartEpoch: activity.startDateEpoch })
     }
+  }
+
+  private async backfillLatlng(): Promise<void> {
+    for (;;) {
+      const rows = listStreamsMissingLatlng(this.db, 50)
+      if (rows.length === 0) return
+      this.log(`backfilling GPS tracks: ${countStreamsMissingLatlng(this.db)} activities left`)
+      for (const activity of rows) {
+        await this.refetchStreamsFor(activity)
+      }
+    }
+  }
+
+  /**
+   * Re-fetch the full stream set of an already-synced activity to pick up its
+   * GPS track. Always leaves a non-NULL latlng behind (the backfill's
+   * termination guarantee), even when Strava no longer serves the streams.
+   */
+  private async refetchStreamsFor(activity: ActivityRow): Promise<void> {
+    try {
+      const set = await this.client.getStreams(activity.id)
+      saveStreams(this.db, activity.id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) throw err
+      const existing = getStreams(this.db, activity.id)
+      if (existing) {
+        saveStreams(
+          this.db,
+          activity.id,
+          { ...existing, latlng: [] },
+          new Date(this.nowMs()).toISOString(),
+        )
+      }
+    }
+  }
+}
+
+/** Map a Strava stream set to the stored shape; a missing latlng stream means "no GPS". */
+function toStoredStreams(set: StravaStreamSet): ActivityStreams {
+  return {
+    time: set.time?.data ?? [],
+    distance: set.distance?.data ?? [],
+    altitude: set.altitude?.data ?? null,
+    latlng: set.latlng?.data ?? [],
   }
 }
 

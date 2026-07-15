@@ -1,7 +1,7 @@
-import { asc, count, desc, eq, lt } from 'drizzle-orm'
+import { and, asc, count, desc, eq, isNull, lt } from 'drizzle-orm'
 import type { ActivitySummary, StreamsStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
-import { activities } from '../db/schema.js'
+import { activities, activityStreams } from '../db/schema.js'
 
 export interface ActivityRow {
   id: number
@@ -73,6 +73,43 @@ export function countPendingStreams(db: Db): number {
     .select({ n: count() })
     .from(activities)
     .where(eq(activities.streamsStatus, 'pending'))
+    .get()
+  return row?.n ?? 0
+}
+
+/**
+ * Activities whose stored streams predate the latlng column (SQL NULL, as
+ * opposed to '[]' = "no GPS"), oldest first — the one-time backfill set.
+ */
+export function listStreamsMissingLatlng(db: Db, limit: number): ActivityRow[] {
+  return db
+    .select({
+      id: activities.id,
+      name: activities.name,
+      sportType: activities.sportType,
+      startDate: activities.startDate,
+      startDateEpoch: activities.startDateEpoch,
+      distanceM: activities.distanceM,
+      movingTimeS: activities.movingTimeS,
+      elapsedTimeS: activities.elapsedTimeS,
+      totalElevationGainM: activities.totalElevationGainM,
+      streamsStatus: activities.streamsStatus,
+      rawSummary: activities.rawSummary,
+    })
+    .from(activities)
+    .innerJoin(activityStreams, eq(activityStreams.activityId, activities.id))
+    .where(and(eq(activities.streamsStatus, 'done'), isNull(activityStreams.latlng)))
+    .orderBy(asc(activities.startDateEpoch))
+    .limit(limit)
+    .all()
+}
+
+export function countStreamsMissingLatlng(db: Db): number {
+  const row = db
+    .select({ n: count() })
+    .from(activities)
+    .innerJoin(activityStreams, eq(activityStreams.activityId, activities.id))
+    .where(and(eq(activities.streamsStatus, 'done'), isNull(activityStreams.latlng)))
     .get()
   return row?.n ?? 0
 }

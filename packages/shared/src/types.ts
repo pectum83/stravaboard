@@ -22,6 +22,8 @@ export interface ActivityStreams {
   distance: number[]
   /** Altitude in meters, or null when the activity has no elevation data. */
   altitude: number[] | null
+  /** GPS track as [lat, lng] pairs, or null when the activity has no GPS data. */
+  latlng: [number, number][] | null
 }
 
 export interface Settings {
@@ -56,6 +58,8 @@ export interface SyncStatus {
   fetchedActivities: number
   /** Activities still waiting for their streams. */
   pendingStreams: number
+  /** Already-synced activities whose streams still lack a GPS track (one-time backfill). */
+  pendingLatlngBackfill: number
   /** ISO date the sync will resume at when rate-limited. */
   rateLimitResumeAt?: string
   error?: string
