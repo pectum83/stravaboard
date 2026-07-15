@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, isNull, lt } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import type { ActivitySummary, StreamsStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
 import { activities, activityStreams } from '../db/schema.js'
@@ -34,19 +34,61 @@ export function upsertActivitySummary(db: Db, row: ActivityRow): void {
     .run()
 }
 
-/** Page of activities, newest first; `beforeEpoch` is an exclusive keyset cursor. */
+export interface ActivityFilter {
+  /** Name substring (SQLite LIKE — case-insensitive for ASCII only). */
+  q?: string
+  /** Inclusive lower bound on start date, epoch seconds. */
+  fromEpoch?: number
+  /** Exclusive upper bound on start date, epoch seconds. */
+  toEpochExclusive?: number
+  sportType?: string
+}
+
+/**
+ * Page of activities, newest first; `beforeEpoch` is an exclusive keyset
+ * cursor. Filters are stable predicates, so they compose with the cursor.
+ */
 export function listActivities(
   db: Db,
-  { limit, beforeEpoch }: { limit: number; beforeEpoch?: number },
+  {
+    limit,
+    beforeEpoch,
+    filter = {},
+  }: { limit: number; beforeEpoch?: number; filter?: ActivityFilter },
 ): ActivityRow[] {
-  const where = beforeEpoch === undefined ? undefined : lt(activities.startDateEpoch, beforeEpoch)
+  const conditions = [
+    beforeEpoch === undefined ? undefined : lt(activities.startDateEpoch, beforeEpoch),
+    filter.q === undefined
+      ? undefined
+      : sql`${activities.name} LIKE ${`%${escapeLike(filter.q)}%`} ESCAPE '\\'`,
+    filter.fromEpoch === undefined ? undefined : gte(activities.startDateEpoch, filter.fromEpoch),
+    filter.toEpochExclusive === undefined
+      ? undefined
+      : lt(activities.startDateEpoch, filter.toEpochExclusive),
+    filter.sportType === undefined ? undefined : eq(activities.sportType, filter.sportType),
+  ].filter((c) => c !== undefined)
   return db
     .select()
     .from(activities)
-    .where(where)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(activities.startDateEpoch), desc(activities.id))
     .limit(limit)
     .all()
+}
+
+/** Escape LIKE wildcards so user input matches literally. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
+/** Distinct sport types present in the database, sorted. */
+export function listSportTypes(db: Db): string[] {
+  return db
+    .selectDistinct({ sportType: activities.sportType })
+    .from(activities)
+    .orderBy(asc(activities.sportType))
+    .all()
+    .map((r) => r.sportType)
 }
 
 export function getActivity(db: Db, id: number): ActivityRow | null {
