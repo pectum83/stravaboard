@@ -19,7 +19,7 @@ test('dashboard flow: list, chart, settings persistence, empty state', async ({ 
   // Legend text lives in canvas, so assert through the settings-driven names
   // via the chart options indirectly: change a window and check persistence.
   await page.locator('summary').click()
-  const shortInput = page.locator('input').nth(1)
+  const shortInput = page.locator('.settings input').nth(1)
   await expect(shortInput).toHaveValue('120')
   await shortInput.fill('90')
   // Debounced save (500 ms) + request round-trip
@@ -27,10 +27,10 @@ test('dashboard flow: list, chart, settings persistence, empty state', async ({ 
 
   await page.reload()
   await page.locator('summary').click()
-  await expect(page.locator('input').nth(1)).toHaveValue('90')
+  await expect(page.locator('.settings input').nth(1)).toHaveValue('90')
 
   // Restore the default for idempotent re-runs
-  await page.locator('input').nth(1).fill('120')
+  await page.locator('.settings input').nth(1).fill('120')
   await page.waitForTimeout(900)
 
   // The no-altitude activity shows the empty state instead of a chart

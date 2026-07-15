@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { useActivitiesStore } from '../stores/activities'
 import { useSettingsStore } from '../stores/settings'
 import { useStreams } from '../composables/useStreams'
+import ActivityFilters from '../components/ActivityFilters.vue'
 import ActivityList from '../components/ActivityList.vue'
 import ActivityStats from '../components/ActivityStats.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
@@ -56,14 +57,21 @@ onMounted(async () => {
       <SyncStatusBar @synced="activitiesStore.loadFirstPage()" />
       <div class="panes">
         <aside>
-          <ActivityList
-            :activities="activities"
-            :selected-id="selectedId"
-            :has-more="hasMore"
-            :loading="loading"
-            @select="activitiesStore.select"
-            @load-more="activitiesStore.loadMore"
+          <ActivityFilters
+            :filters="activitiesStore.filters"
+            :sport-types="activitiesStore.sportTypes"
+            @update="activitiesStore.setFilters"
           />
+          <div class="list-wrap">
+            <ActivityList
+              :activities="activities"
+              :selected-id="selectedId"
+              :has-more="hasMore"
+              :loading="loading"
+              @select="activitiesStore.select"
+              @load-more="activitiesStore.loadMore"
+            />
+          </div>
         </aside>
         <main>
           <div class="controls">
@@ -125,6 +133,13 @@ aside {
   flex-shrink: 0;
   border-right: 1px solid #e1e0d9;
   background: #fcfcfb;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-wrap {
+  flex: 1;
   min-height: 0;
 }
 

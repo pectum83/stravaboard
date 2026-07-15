@@ -23,15 +23,30 @@ export class ApiError extends Error {
   }
 }
 
+export interface ActivityListParams {
+  limit?: number
+  before?: string
+  q?: string
+  from?: string
+  to?: string
+  sportType?: string
+}
+
 export const api = {
   authStatus: () => request<AuthStatus>('/api/auth/status'),
-  activities: (params: { limit?: number; before?: string } = {}) => {
+  activities: (params: ActivityListParams = {}) => {
     const q = new URLSearchParams()
     if (params.limit) q.set('limit', String(params.limit))
     if (params.before) q.set('before', params.before)
+    if (params.q) q.set('q', params.q)
+    if (params.from) q.set('from', params.from)
+    if (params.to) q.set('to', params.to)
+    if (params.sportType) q.set('sportType', params.sportType)
     const qs = q.toString()
     return request<ActivitiesPage>(`/api/activities${qs ? `?${qs}` : ''}`)
   },
+  sportTypes: () => request<string[]>('/api/activities/sport-types'),
+  config: () => request<{ maptilerKey: string | null }>('/api/config'),
   streams: (activityId: number) =>
     request<ActivityStreams>(`/api/activities/${activityId}/streams`),
   settings: () => request<Settings>('/api/settings'),
