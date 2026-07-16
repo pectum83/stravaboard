@@ -50,5 +50,15 @@ pnpm e2e            # playwright only
 
 ## Deployment
 
-Local-first; VPS-ready (server serves built web app, env-based config). Not
-yet deployed. Auth must be added at the reverse proxy before exposing.
+Production: Ubuntu VPS (`ssh crovps`, user ubuntu, passwordless sudo) at
+https://strava.pectum.fr — Caddy (basic auth `cro`, bcrypt in
+/etc/caddy/Caddyfile, auto-HTTPS) → 127.0.0.1:3001 (`HOST` env pins the
+bind). App in /home/ubuntu/stravaboard (server/ dist+migrations, web/ SPA,
+data/ sqlite, .env chmod 600); systemd unit `stravaboard` runs
+`/usr/local/bin/node22 server/index.js` (nvm symlink). Scripts:
+`deploy/setup-vps.sh` (one-time, idempotent), `deploy/deploy.sh
+[--skip-checks]` (gates → build → rsync → npm install --omit=dev → restart →
+health poll). The runtime package.json is generated from
+apps/server/package.json minus the tsup-bundled @stravaboard/shared.
+Gotcha: tsup onSuccess must `rm -rf dist/migrations` before copying —
+a nested copy breaks the drizzle migrator in production only (dev runs tsx).

@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
+  /** Bind address; 127.0.0.1 in production so only the reverse proxy reaches the app. */
+  HOST: z.string().default('0.0.0.0'),
   APP_BASE_URL: z.string().url().default('http://localhost:3001'),
   DATABASE_PATH: z.string().default('./data/stravaboard.sqlite'),
   STRAVA_CLIENT_ID: z.string().default(''),

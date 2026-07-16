@@ -124,9 +124,28 @@ so future chart types need no re-sync. Back it up by copying the file.
 
 ## Deployment
 
-The design is deployment-ready for a VPS: the server can serve the built web
-app itself (`WEB_DIST_PATH`), all configuration is environment-based, and the
-OAuth redirect derives from `APP_BASE_URL`.
-**Before exposing it on the internet, put it behind authentication** (e.g.
-reverse-proxy basic auth) — the API grants read access to all your private
-activities, and `/api/config` exposes your MapTiler key to any visitor.
+Production runs on a VPS at <https://strava.pectum.fr> behind Caddy
+(automatic Let's Encrypt HTTPS + **basic auth** — required: the API grants
+read access to all private activities and `/api/config` exposes the MapTiler
+key). The Fastify server serves the built web app itself and binds
+`127.0.0.1:3001` so nothing bypasses the proxy.
+
+Layout on the VPS (`/home/ubuntu/stravaboard`): `server/` (bundled dist +
+migrations), `web/` (built SPA), `data/stravaboard.sqlite`, `.env`,
+`package.json` + `node_modules` (5 runtime deps). Runs as the `stravaboard`
+systemd unit on Node 22 (`/usr/local/bin/node22`, an nvm symlink).
+
+- `deploy/setup-vps.sh [host]` — one-time, idempotent provisioning: Node 22,
+  Caddy, app layout, systemd unit, production `.env` (copies the Strava/
+  MapTiler keys from the local `.env`), Caddyfile with a generated basic-auth
+  password (printed once).
+- `deploy/deploy.sh [--skip-checks] [host]` — every release: quality gates,
+  build, rsync artifacts, install runtime deps, restart, health check.
+
+Notes:
+
+- The Strava app's **Authorization Callback Domain** must be the production
+  hostname for OAuth grants made through the site.
+- Strava refresh tokens rotate: after the VPS syncs once, a local dev
+  instance sharing the copied database will eventually need its own
+  re-connect. Treat the VPS as the primary instance.

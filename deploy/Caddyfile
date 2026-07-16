@@ -1,0 +1,11 @@
+# Installed to /etc/caddy/Caddyfile by setup-vps.sh, which replaces the
+# placeholder hash with a real bcrypt hash (caddy hash-password).
+strava.pectum.fr {
+	encode gzip
+
+	basic_auth {
+		cro __BCRYPT_HASH__
+	}
+
+	reverse_proxy 127.0.0.1:3001
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=stravaBoard server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/stravaboard
+# node22 is a symlink to the nvm-installed Node 22 (created by setup-vps.sh)
+ExecStart=/usr/local/bin/node22 server/index.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/ubuntu/stravaboard/data
+
+[Install]
+WantedBy=multi-user.target
