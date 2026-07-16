@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
+import { stubMapTiles } from './mapStub.js'
 
 test('dashboard flow: list, chart, settings persistence, empty state', async ({ page }) => {
+  await stubMapTiles(page)
   await page.goto('/')
 
   // Activity list shows the three seeded activities, newest first

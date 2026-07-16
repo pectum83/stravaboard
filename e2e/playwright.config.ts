@@ -31,6 +31,9 @@ export default defineConfig({
         STRAVA_OAUTH_BASE: `http://localhost:${STUB_PORT}/oauth`,
         STRAVA_CLIENT_ID: 'e2e',
         STRAVA_CLIENT_SECRET: 'e2e',
+        // Exercises the keyed map path; all MapTiler traffic is route-stubbed
+        // in the specs, so no real request ever leaves the machine.
+        MAPTILER_KEY: 'e2e-key',
       },
     },
   ],

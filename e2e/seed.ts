@@ -23,7 +23,11 @@ function trackFromDistance(distance: number[]): [number, number][] {
   return distance.map((d): [number, number] => [45.1 + d / M_PER_DEG_LAT, 6.05])
 }
 
-/** A mountain run: two climbs (400 m and 250 m) separated by a descent, with noise. */
+/**
+ * A mountain run: two climbs (400 m and 250 m) separated by a descent, with
+ * noise, and a 90 s standstill in the middle of climb 1 (position frozen, so
+ * the pause exclusion is observable in the ascent mean).
+ */
 function mountainProfile(): Profile {
   const time: number[] = []
   const distance: number[] = []
@@ -31,7 +35,9 @@ function mountainProfile(): Profile {
   let alt = 800
   let dist = 0
   const legs: Array<{ durationS: number; vSpeed: number; speed: number }> = [
-    { durationS: 1800, vSpeed: 0.22, speed: 1.7 }, // climb 1: ~400 m
+    { durationS: 900, vSpeed: 0.22, speed: 1.7 }, // climb 1, first half
+    { durationS: 90, vSpeed: 0, speed: 0 }, // standstill (pause)
+    { durationS: 900, vSpeed: 0.22, speed: 1.7 }, // climb 1, second half
     { durationS: 900, vSpeed: -0.3, speed: 2.8 }, // descent
     { durationS: 1500, vSpeed: 0.17, speed: 1.8 }, // climb 2: ~250 m
     { durationS: 1200, vSpeed: -0.35, speed: 3.0 }, // final descent
