@@ -21,7 +21,13 @@ const { settings } = storeToRefs(settingsStore)
 
 const connected = ref<boolean | null>(null)
 
-const { streams, loading: streamsLoading, missing, error: streamsError } = useStreams(selectedId)
+const {
+  streams,
+  loading: streamsLoading,
+  missing,
+  error: streamsError,
+  reload: reloadStreams,
+} = useStreams(selectedId)
 
 const selectedActivity = computed(
   () => activities.value.find((a) => a.id === selectedId.value) ?? null,
@@ -36,6 +42,24 @@ const model = computed(() =>
 const hoverIndex = ref<number | null>(null)
 
 const maptilerKey = ref<string | null>(null)
+
+const reloading = ref(false)
+const reloadError = ref<string | null>(null)
+
+/** Re-fetch the selected activity from Strava (after editing it there). */
+async function reloadActivity(): Promise<void> {
+  if (selectedId.value === null || reloading.value) return
+  reloading.value = true
+  reloadError.value = null
+  try {
+    await activitiesStore.refreshActivity(selectedId.value)
+    await reloadStreams()
+  } catch (err) {
+    reloadError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    reloading.value = false
+  }
+}
 
 onMounted(async () => {
   const status = await api.authStatus()
@@ -85,6 +109,17 @@ onMounted(async () => {
         <main>
           <div class="controls">
             <SettingsPanel />
+            <button
+              v-if="selectedId !== null"
+              class="reload"
+              type="button"
+              :disabled="reloading"
+              title="Re-fetch this activity's data and streams from Strava (use after editing or cropping it on strava.com)"
+              @click="reloadActivity"
+            >
+              {{ reloading ? 'Reloading…' : '↻ Reload from Strava' }}
+            </button>
+            <span v-if="reloadError" class="reload-error">{{ reloadError }}</span>
             <ActivityStats v-if="model" :ascent="model.ascentStats" :descent="model.descentStats" />
           </div>
           <div class="visuals">
@@ -174,8 +209,37 @@ main {
 .controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
+}
+
+.controls .stats {
+  margin-left: auto;
+}
+
+.reload {
+  padding: 6px 12px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  background: white;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #52514e;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reload:hover:not(:disabled) {
+  background: #f2f1ec;
+}
+
+.reload:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.reload-error {
+  color: #d03b3b;
+  font-size: 0.8rem;
 }
 
 .visuals {

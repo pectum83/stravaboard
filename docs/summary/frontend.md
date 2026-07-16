@@ -7,8 +7,8 @@ Scoped CSS, light palette only, no CSS framework.
 
 - `api/client.ts` — typed fetch wrappers: `authStatus`, `activities(params)`
   (`ActivityListParams {limit, before, q, from, to, sportType}`), `sportTypes()`,
-  `config()` (`{maptilerKey}`), `streams(id)`, `settings`/`saveSettings`,
-  `startSync`, `syncStatus`. Errors → `ApiError(status)`.
+  `refreshActivity(id)` (POST), `config()` (`{maptilerKey}`), `streams(id)`,
+  `settings`/`saveSettings`, `startSync`, `syncStatus`. Errors → `ApiError(status)`.
 - `stores/settings.ts` (Pinia setup store) — `settings` seeded from
   `DEFAULT_SETTINGS`; `load()` GET; `update(patch)` applies immediately,
   **debounced 500 ms PUT** of the full object; `saveError`.
@@ -18,13 +18,18 @@ Scoped CSS, light palette only, no CSS framework.
     `loadMore()` sends only non-empty filters, `sportTypes` loaded with the first
     page, `select(id)`.
 - `composables/useStreams.ts` — watches selected id, module-level
-  `Map<number, ActivityStreams>` cache, 404 → `missing`.
+  `Map<number, ActivityStreams>` cache, 404 → `missing`; returns `reload()`
+  which evicts the current id from the cache and refetches.
+- Store `refreshActivity(id)` calls the refresh endpoint and replaces the
+  summary in place (throws on failure — callers surface the error).
 
 ## DashboardPage
 
 Layout: `SyncStatusBar` on top; aside 320 px = `ActivityFilters` +
-`ActivityList` (in `.list-wrap`); main = `.controls` row (`SettingsPanel` +
-`ActivityStats` right) then `.visuals` flex row = `.chart-area` (flex 2,
+`ActivityList` (in `.list-wrap`); main = `.controls` row (`SettingsPanel`,
+"↻ Reload from Strava" button when an activity is selected — store refresh +
+`reloadStreams()`, inline error — and `ActivityStats` pushed right) then
+`.visuals` flex row = `.chart-area` (flex 2,
 `VerticalSpeedChart`) + `.map-area` (flex 1, `MapPanel`, only when streams
 loaded). Computes `model = computeVSpeedModel(streams, settings)` once
 (null unless streams have altitude); `hoverIndex` ref bridges chart → map.

@@ -1,0 +1,78 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import type { ActivitySummary } from '@stravaboard/shared'
+import { useActivitiesStore } from '../stores/activities'
+import { api } from '../api/client'
+
+vi.mock('../api/client', () => ({
+  api: {
+    activities: vi.fn(),
+    sportTypes: vi.fn(),
+    refreshActivity: vi.fn(),
+  },
+}))
+
+function summary(id: number, overrides: Partial<ActivitySummary> = {}): ActivitySummary {
+  return {
+    id,
+    name: `Activity ${id}`,
+    sportType: 'Run',
+    startDate: '2026-06-20T07:30:00Z',
+    distanceM: 10_000,
+    movingTimeS: 3600,
+    elapsedTimeS: 3700,
+    totalElevationGainM: 500,
+    streamsStatus: 'done',
+    ...overrides,
+  }
+}
+
+describe('activities store', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(api.sportTypes).mockResolvedValue(['Run'])
+  })
+
+  it('replaces the refreshed activity in place', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1), summary(2)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.refreshActivity).mockResolvedValue(
+      summary(2, { name: 'Cropped', distanceM: 9000 }),
+    )
+    await store.refreshActivity(2)
+
+    expect(store.activities.map((a) => a.name)).toEqual(['Activity 1', 'Cropped'])
+    expect(store.activities[1]!.distanceM).toBe(9000)
+  })
+
+  it('propagates refresh failures without touching the list', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.refreshActivity).mockRejectedValue(new Error('rate limit'))
+    await expect(store.refreshActivity(1)).rejects.toThrow('rate limit')
+    expect(store.activities[0]!.name).toBe('Activity 1')
+  })
+
+  it('resets the list and pagination when filters change', async () => {
+    vi.mocked(api.activities).mockResolvedValue({
+      activities: [summary(1)],
+      nextBefore: '1000',
+    })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(2)] })
+    await store.setFilters({ q: 'mountain' })
+
+    expect(vi.mocked(api.activities)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: 'mountain', before: undefined }),
+    )
+    expect(store.activities.map((a) => a.id)).toEqual([2])
+    expect(store.hasMore).toBe(false)
+  })
+})

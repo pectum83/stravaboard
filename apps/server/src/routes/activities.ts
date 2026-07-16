@@ -9,6 +9,8 @@ import {
   toSummary,
 } from '../repositories/activities.repo.js'
 import { getStreams } from '../repositories/streams.repo.js'
+import { NotFoundError, RateLimitError } from '../strava/client.js'
+import type { SyncService } from '../sync/syncService.js'
 
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
 
@@ -23,7 +25,7 @@ const listQuerySchema = z.object({
 
 const dayToEpoch = (day: string): number => Date.parse(`${day}T00:00:00Z`) / 1000
 
-export function registerActivityRoutes(app: FastifyInstance, db: Db): void {
+export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncService): void {
   app.get('/api/activities', async (req, reply) => {
     const parsed = listQuerySchema.safeParse(req.query)
     if (!parsed.success) {
@@ -51,6 +53,27 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db): void {
   })
 
   app.get('/api/activities/sport-types', async () => listSportTypes(db))
+
+  // Re-fetch one activity from Strava (after it was edited/cropped there).
+  app.post('/api/activities/:id/refresh', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'invalid id' })
+    if (!getActivity(db, id)) return reply.code(404).send({ error: 'unknown activity' })
+    try {
+      return toSummary(await sync.refreshActivity(id))
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        return reply.code(404).send({ error: 'activity not found on Strava' })
+      }
+      if (err instanceof RateLimitError) {
+        return reply.code(429).send({
+          error: 'Strava rate limit reached',
+          resumeAt: new Date(err.resumeAtMs).toISOString(),
+        })
+      }
+      throw err
+    }
+  })
 
   app.get('/api/activities/:id/streams', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)

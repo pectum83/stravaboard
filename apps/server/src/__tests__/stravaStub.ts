@@ -80,6 +80,12 @@ export function stravaStub(opts: StravaStubOptions = {}) {
       return Response.json(matching.slice(start, start + perPage))
     }
 
+    const detailMatch = url.pathname.match(/\/activities\/(\d+)$/)
+    if (detailMatch) {
+      const activity = activities.find((a) => a.id === Number(detailMatch[1]))
+      return activity ? Response.json(activity) : new Response('not found', { status: 404 })
+    }
+
     const streamsMatch = url.pathname.match(/\/activities\/(\d+)\/streams$/)
     if (streamsMatch) {
       const id = Number(streamsMatch[1])

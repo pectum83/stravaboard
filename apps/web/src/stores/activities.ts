@@ -79,6 +79,12 @@ export const useActivitiesStore = defineStore('activities', () => {
     selectedId.value = id
   }
 
+  /** Re-fetch one activity from Strava (after it was edited there). Throws on failure. */
+  async function refreshActivity(id: number): Promise<void> {
+    const updated = await api.refreshActivity(id)
+    activities.value = activities.value.map((a) => (a.id === id ? updated : a))
+  }
+
   return {
     activities,
     selectedId,
@@ -91,5 +97,6 @@ export const useActivitiesStore = defineStore('activities', () => {
     loadMore,
     setFilters,
     select,
+    refreshActivity,
   }
 })

@@ -18,7 +18,9 @@ position, not from GPS speed. Whole-activity ascent and descent means are shown
 above the chart. A **map panel** beside the chart shows the activity trace with
 streets / satellite / 3D-terrain layers, and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
-sport type.
+sport type. A **"↻ Reload from Strava"** button re-fetches the selected
+activity (data and streams) — use it after renaming, cropping or otherwise
+editing an activity on strava.com.
 
 ## Stack
 

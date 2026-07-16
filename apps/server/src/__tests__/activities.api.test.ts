@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { upsertActivity, type ActivityRow } from '../repositories/activities.repo.js'
-import { saveStreams } from '../repositories/streams.repo.js'
+import { getActivity, upsertActivity, type ActivityRow } from '../repositories/activities.repo.js'
+import { getStreams, saveStreams } from '../repositories/streams.repo.js'
+import { saveTokens } from '../repositories/tokens.repo.js'
+import type { Db } from '../db/client.js'
 import { testApp, testDb } from './helpers.js'
+import { makeActivity, stravaStub, type StravaStubOptions } from './stravaStub.js'
 
 function activity(id: number, epoch: number, overrides: Partial<ActivityRow> = {}): ActivityRow {
   return {
@@ -123,6 +126,97 @@ describe('activities API', () => {
     const { app } = await testApp({}, db)
     const res = await app.inject({ method: 'GET', url: '/api/activities/sport-types' })
     expect(res.json()).toEqual(['Run', 'TrailRun'])
+  })
+
+  describe('POST /api/activities/:id/refresh', () => {
+    function connectedDb(): Db {
+      const db = testDb()
+      saveTokens(db, {
+        athleteId: 1,
+        accessToken: 'valid',
+        refreshToken: 'r',
+        expiresAt: Math.floor(Date.now() / 1000) + 21600,
+      })
+      return db
+    }
+
+    async function refreshApp(db: Db, stubOpts: StravaStubOptions) {
+      const stub = stravaStub(stubOpts)
+      const { app } = await testApp(
+        {
+          STRAVA_API_BASE: 'https://strava.test/api/v3',
+          STRAVA_OAUTH_BASE: 'https://strava.test/oauth',
+        },
+        db,
+        stub.fetchImpl,
+      )
+      return app
+    }
+
+    it('re-fetches the summary and streams from Strava', async () => {
+      const db = connectedDb()
+      upsertActivity(db, activity(101, 1000, { name: 'Before crop' }))
+      saveStreams(db, 101, { time: [0, 1], distance: [0, 5], altitude: [1, 2], latlng: [] }, 'old')
+
+      const cropped = makeActivity(101, new Date(1000 * 1000).toISOString(), {
+        name: 'After crop',
+        distance: 9000,
+      })
+      const app = await refreshApp(db, { activities: [cropped] })
+
+      const res = await app.inject({ method: 'POST', url: '/api/activities/101/refresh' })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ id: 101, name: 'After crop', distanceM: 9000 })
+      // Streams replaced by the stub's fresh set (incl. latlng)
+      expect(getStreams(db, 101)?.altitude).toEqual([100, 101, 102, 103])
+      expect(getStreams(db, 101)?.latlng).not.toBeNull()
+      expect(getActivity(db, 101)?.streamsStatus).toBe('done')
+    })
+
+    it('404s for an activity unknown locally', async () => {
+      const app = await refreshApp(connectedDb(), { activities: [] })
+      const res = await app.inject({ method: 'POST', url: '/api/activities/9/refresh' })
+      expect(res.statusCode).toBe(404)
+    })
+
+    it('404s without touching local data when Strava no longer has the activity', async () => {
+      const db = connectedDb()
+      upsertActivity(db, activity(101, 1000, { name: 'Kept' }))
+      const app = await refreshApp(db, { activities: [] }) // stub knows no activity 101
+
+      const res = await app.inject({ method: 'POST', url: '/api/activities/101/refresh' })
+      expect(res.statusCode).toBe(404)
+      expect(res.json().error).toContain('Strava')
+      expect(getActivity(db, 101)?.name).toBe('Kept')
+    })
+
+    it('drops stale streams when Strava stops serving them', async () => {
+      const db = connectedDb()
+      upsertActivity(db, activity(101, 1000))
+      saveStreams(db, 101, { time: [0], distance: [0], altitude: [1], latlng: [] }, 'old')
+      const app = await refreshApp(db, {
+        activities: [makeActivity(101, new Date(1000 * 1000).toISOString())],
+        noStreams: [101],
+      })
+
+      const res = await app.inject({ method: 'POST', url: '/api/activities/101/refresh' })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().streamsStatus).toBe('none')
+      expect(getStreams(db, 101)).toBeNull()
+    })
+
+    it('surfaces Strava rate limiting as 429 with a resume time', async () => {
+      const db = connectedDb()
+      upsertActivity(db, activity(101, 1000))
+      const app = await refreshApp(db, {
+        activities: [makeActivity(101, new Date(1000 * 1000).toISOString())],
+        rateLimit429Count: 1,
+      })
+
+      const res = await app.inject({ method: 'POST', url: '/api/activities/101/refresh' })
+      expect(res.statusCode).toBe(429)
+      expect(res.json().resumeAt).toBeDefined()
+    })
   })
 
   it('serves stored streams', async () => {

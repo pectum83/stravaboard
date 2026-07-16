@@ -25,6 +25,10 @@ export function saveStreams(
     .run()
 }
 
+export function deleteStreams(db: Db, activityId: number): void {
+  db.delete(activityStreams).where(eq(activityStreams.activityId, activityId)).run()
+}
+
 export function getStreams(db: Db, activityId: number): ActivityStreams | null {
   const row = db
     .select()

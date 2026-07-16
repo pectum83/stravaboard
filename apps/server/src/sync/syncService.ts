@@ -3,13 +3,14 @@ import type { Db } from '../db/client.js'
 import {
   countPendingStreams,
   countStreamsMissingLatlng,
+  getActivity,
   listPendingStreams,
   listStreamsMissingLatlng,
   setStreamsStatus,
   upsertActivitySummary,
   type ActivityRow,
 } from '../repositories/activities.repo.js'
-import { getStreams, saveStreams } from '../repositories/streams.repo.js'
+import { deleteStreams, getStreams, saveStreams } from '../repositories/streams.repo.js'
 import { getSyncState, saveSyncState } from '../repositories/syncState.repo.js'
 import { NotFoundError, RateLimitError, type StravaClient } from '../strava/client.js'
 import { NotConnectedError } from '../strava/oauth.js'
@@ -218,6 +219,28 @@ export class SyncService {
     if (activity.startDateEpoch > checkpoint) {
       saveSyncState(this.db, { lastActivityStartEpoch: activity.startDateEpoch })
     }
+  }
+
+  /**
+   * Re-fetch one activity's summary and streams from Strava on demand — for
+   * activities edited on strava.com after they were synced (renamed, cropped,
+   * privacy changed). Callers handle NotFoundError (gone from Strava; local
+   * data untouched) and RateLimitError. Streams that disappeared mark the
+   * activity 'none' and drop the stale rows.
+   */
+  async refreshActivity(id: number): Promise<ActivityRow> {
+    const detail = await this.client.getActivity(id)
+    upsertActivitySummary(this.db, toRow(detail))
+    try {
+      const set = await this.client.getStreams(id)
+      saveStreams(this.db, id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
+      setStreamsStatus(this.db, id, 'done')
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) throw err
+      deleteStreams(this.db, id)
+      setStreamsStatus(this.db, id, 'none')
+    }
+    return getActivity(this.db, id)!
   }
 
   private async backfillLatlng(): Promise<void> {

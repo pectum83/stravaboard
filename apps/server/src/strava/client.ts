@@ -51,6 +51,11 @@ export class StravaClient {
     return this.get<StravaSummaryActivity[]>(`/athlete/activities?${params}`)
   }
 
+  /** Detailed activity — a superset of the summary fields we store. */
+  async getActivity(activityId: number) {
+    return this.get<StravaSummaryActivity>(`/activities/${activityId}`)
+  }
+
   async getStreams(activityId: number) {
     const params = new URLSearchParams({
       keys: 'time,distance,altitude,latlng',

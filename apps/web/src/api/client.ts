@@ -1,6 +1,7 @@
 import type {
   ActivitiesPage,
   ActivityStreams,
+  ActivitySummary,
   AuthStatus,
   Settings,
   SyncStatus,
@@ -46,6 +47,8 @@ export const api = {
     return request<ActivitiesPage>(`/api/activities${qs ? `?${qs}` : ''}`)
   },
   sportTypes: () => request<string[]>('/api/activities/sport-types'),
+  refreshActivity: (activityId: number) =>
+    request<ActivitySummary>(`/api/activities/${activityId}/refresh`, { method: 'POST' }),
   config: () => request<{ maptilerKey: string | null }>('/api/config'),
   streams: (activityId: number) =>
     request<ActivityStreams>(`/api/activities/${activityId}/streams`),

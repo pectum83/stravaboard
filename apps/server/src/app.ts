@@ -43,7 +43,7 @@ export async function buildApp({
   registerConfigRoutes(app, config)
   registerSettingsRoutes(app, db)
   registerSyncRoutes(app, sync)
-  registerActivityRoutes(app, db)
+  registerActivityRoutes(app, db, sync)
 
   if (config.WEB_DIST_PATH) {
     const { default: fastifyStatic } = await import('@fastify/static')

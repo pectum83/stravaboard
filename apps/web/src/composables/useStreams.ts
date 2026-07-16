@@ -11,35 +11,49 @@ export function useStreams(activityId: Ref<number | null>) {
   const missing = ref(false)
   const error = ref<string | null>(null)
 
+  async function load(id: number): Promise<void> {
+    streams.value = null
+    missing.value = false
+    error.value = null
+    const cached = cache.get(id)
+    if (cached) {
+      streams.value = cached
+      return
+    }
+    loading.value = true
+    try {
+      const fetched = await api.streams(id)
+      cache.set(id, fetched)
+      if (activityId.value === id) streams.value = fetched
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        missing.value = true
+      } else {
+        error.value = err instanceof Error ? err.message : String(err)
+      }
+    } finally {
+      loading.value = false
+    }
+  }
+
   watch(
     activityId,
-    async (id) => {
+    (id) => {
       streams.value = null
       missing.value = false
       error.value = null
-      if (id === null) return
-      const cached = cache.get(id)
-      if (cached) {
-        streams.value = cached
-        return
-      }
-      loading.value = true
-      try {
-        const fetched = await api.streams(id)
-        cache.set(id, fetched)
-        if (activityId.value === id) streams.value = fetched
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          missing.value = true
-        } else {
-          error.value = err instanceof Error ? err.message : String(err)
-        }
-      } finally {
-        loading.value = false
-      }
+      if (id !== null) void load(id)
     },
     { immediate: true },
   )
 
-  return { streams, loading, missing, error }
+  /** Drop the cached streams of the current activity and fetch them again. */
+  async function reload(): Promise<void> {
+    const id = activityId.value
+    if (id === null) return
+    cache.delete(id)
+    await load(id)
+  }
+
+  return { streams, loading, missing, error, reload }
 }

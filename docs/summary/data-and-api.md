@@ -48,6 +48,10 @@ applied automatically by `openDb`).
   compose with the cursor. `from`/`to` are `YYYY-MM-DD`, `to` inclusive
   (implemented as `< to+86400`). Invalid query → 400.
 - `GET /activities/sport-types` → `string[]` distinct sorted.
+- `POST /activities/:id/refresh` → re-fetches summary + streams from Strava
+  (for activities edited/cropped on strava.com); 200 `ActivitySummary`,
+  404 unknown locally OR gone from Strava (local data untouched), 429 with
+  `resumeAt` on rate limit. Streams gone → status 'none', stale rows deleted.
 - `GET /activities/:id/streams` → `ActivityStreams` (shared type:
   `{time, distance, altitude|null, latlng|null}`); 404 with `streamsStatus`
   when absent.
@@ -58,6 +62,10 @@ applied automatically by `openDb`).
   (`key_by_type=true`). Add new stream kinds here + `strava/types.ts`
   (`StravaStreamSet`) + `toStoredStreams()` in syncService + schema/migration +
   streams.repo + shared `ActivityStreams`.
+- `StravaClient.getActivity(id)` fetches one detailed activity (superset of
+  summary fields). `SyncService.refreshActivity(id)` implements the on-demand
+  single-activity refresh (summary upsert preserving streamsStatus, streams
+  replace, NotFound/RateLimit propagate to the route).
 - `SyncService.run()` = three passes, each wrapped in `retryingOnRateLimit`
   (sleeps through 429/limit windows; transient `TypeError: fetch failed`
   retried with backoff, budget reset on progress via `progressMarker()`):
