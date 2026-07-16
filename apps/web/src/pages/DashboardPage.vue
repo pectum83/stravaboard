@@ -8,6 +8,7 @@ import { useStreams } from '../composables/useStreams'
 import ActivityFilters from '../components/ActivityFilters.vue'
 import ActivityList from '../components/ActivityList.vue'
 import ActivityStats from '../components/ActivityStats.vue'
+import MapPanel from '../components/MapPanel.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import SyncStatusBar from '../components/SyncStatusBar.vue'
 import VerticalSpeedChart from '../components/VerticalSpeedChart.vue'
@@ -34,11 +35,19 @@ const model = computed(() =>
 /** Stream index under the chart cursor (drives the map marker). */
 const hoverIndex = ref<number | null>(null)
 
+const maptilerKey = ref<string | null>(null)
+
 onMounted(async () => {
   const status = await api.authStatus()
   connected.value = status.connected
   if (status.connected) {
-    await Promise.all([settingsStore.load(), activitiesStore.loadFirstPage()])
+    await Promise.all([
+      settingsStore.load(),
+      activitiesStore.loadFirstPage(),
+      api.config().then((c) => {
+        maptilerKey.value = c.maptilerKey
+      }),
+    ])
   }
 })
 </script>
@@ -78,22 +87,32 @@ onMounted(async () => {
             <SettingsPanel />
             <ActivityStats v-if="model" :ascent="model.ascentStats" :descent="model.descentStats" />
           </div>
-          <section class="chart-area">
-            <p v-if="selectedId === null" class="placeholder">
-              Select an activity to see its vertical speed profile.
-            </p>
-            <p v-else-if="streamsLoading" class="placeholder">Loading streams…</p>
-            <p v-else-if="missing || (streams && !hasAltitude)" class="placeholder">
-              <strong>{{ selectedActivity?.name }}</strong> has no elevation data.
-            </p>
-            <p v-else-if="streamsError" class="placeholder error">{{ streamsError }}</p>
-            <VerticalSpeedChart
-              v-else-if="model"
-              :model="model"
-              :settings="settings"
-              @hover-index="hoverIndex = $event"
-            />
-          </section>
+          <div class="visuals">
+            <section class="chart-area">
+              <p v-if="selectedId === null" class="placeholder">
+                Select an activity to see its vertical speed profile.
+              </p>
+              <p v-else-if="streamsLoading" class="placeholder">Loading streams…</p>
+              <p v-else-if="missing || (streams && !hasAltitude)" class="placeholder">
+                <strong>{{ selectedActivity?.name }}</strong> has no elevation data.
+              </p>
+              <p v-else-if="streamsError" class="placeholder error">{{ streamsError }}</p>
+              <VerticalSpeedChart
+                v-else-if="model"
+                :model="model"
+                :settings="settings"
+                @hover-index="hoverIndex = $event"
+              />
+            </section>
+            <section v-if="streams" class="map-area">
+              <MapPanel
+                :key="selectedId ?? 'none'"
+                :latlng="streams.latlng"
+                :hover-index="hoverIndex"
+                :maptiler-key="maptilerKey"
+              />
+            </section>
+          </div>
         </main>
       </div>
     </template>
@@ -159,8 +178,27 @@ main {
   gap: 16px;
 }
 
-.chart-area {
+.visuals {
+  display: flex;
+  gap: 12px;
   flex: 1;
+  min-height: 0;
+}
+
+.chart-area {
+  flex: 2;
+  min-width: 0;
+  min-height: 0;
+  background: #fcfcfb;
+  border: 1px solid #e1e0d9;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+}
+
+.map-area {
+  flex: 1;
+  min-width: 280px;
   min-height: 0;
   background: #fcfcfb;
   border: 1px solid #e1e0d9;

@@ -12,13 +12,12 @@ test('dashboard flow: list, chart, settings persistence, empty state', async ({ 
 
   // Selecting a mountain run renders the chart with all four series in the legend
   await items.nth(0).click()
-  await expect(page.locator('canvas')).toBeVisible()
   const canvas = page.locator('.chart canvas').first()
   await expect(canvas).toBeVisible()
 
   // Legend text lives in canvas, so assert through the settings-driven names
   // via the chart options indirectly: change a window and check persistence.
-  await page.locator('summary').click()
+  await page.locator('.settings summary').click()
   const shortInput = page.locator('.settings input').nth(1)
   await expect(shortInput).toHaveValue('120')
   await shortInput.fill('90')
@@ -26,7 +25,7 @@ test('dashboard flow: list, chart, settings persistence, empty state', async ({ 
   await page.waitForTimeout(900)
 
   await page.reload()
-  await page.locator('summary').click()
+  await page.locator('.settings summary').click()
   await expect(page.locator('.settings input').nth(1)).toHaveValue('90')
 
   // Restore the default for idempotent re-runs

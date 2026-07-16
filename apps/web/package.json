@@ -14,11 +14,13 @@
   "dependencies": {
     "@stravaboard/shared": "workspace:*",
     "echarts": "^5.6.0",
+    "maplibre-gl": "^5.24.0",
     "pinia": "^3.0.0",
     "vue": "^3.5.0",
     "vue-echarts": "^7.0.3"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@vitejs/plugin-vue": "^5.2.0",
     "@vitest/coverage-v8": "^3.2.0",
     "@vue/test-utils": "^2.4.6",
