@@ -128,6 +128,9 @@ function segmentSeries(name: string, segments: Ascent[], color: string): LineSer
     ...lineSeries(name, data, color, { lineStyle: { width: 3 } }),
     showSymbol: true,
     symbolSize: 0,
+    // The legend identifies these series; a name endLabel would collide with
+    // the last segment's value label.
+    endLabel: { show: false },
   }
 }
 

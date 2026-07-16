@@ -69,6 +69,8 @@ describe('buildChartOptions', () => {
     for (const idx of [3, 4]) {
       expect(series[idx]!.showSymbol).toBe(true)
       expect(series[idx]!.symbolSize).toBe(0)
+      // No name endLabel on segment series — it would collide with the last value label.
+      expect(series[idx]!.endLabel).toEqual({ show: false })
     }
   })
 
