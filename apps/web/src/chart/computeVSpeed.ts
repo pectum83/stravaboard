@@ -4,6 +4,7 @@ import {
   detectDescents,
   detectPauses,
   medianFilter,
+  windowedSlope,
   windowedVerticalSpeed,
   type ActivityStreams,
   type Ascent,
@@ -22,6 +23,8 @@ export interface VSpeedModel {
   instant: VSpeedPoint[]
   short: VSpeedPoint[]
   long: VSpeedPoint[]
+  /** Terrain slope in % over the configured distance window. */
+  slope: VSpeedPoint[]
   ascents: Ascent[]
   descents: Ascent[]
   pauses: Pause[]
@@ -44,6 +47,7 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
   const long = windowedVerticalSpeed(time, distance, altitude, {
     windowS: settings.longWindowS,
   })
+  const slope = windowedSlope(distance, altitude, { windowM: settings.slopeWindowM })
 
   const pauses =
     time.length === 0
@@ -62,6 +66,7 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
     instant,
     short,
     long,
+    slope,
     ascents,
     descents,
     pauses,

@@ -34,6 +34,12 @@ describe('computeVSpeedModel', () => {
     expect(model.ascents[0]!.meanVSpeed).toBeCloseTo(1800, 4)
   })
 
+  it('computes the terrain slope on its own distance window', () => {
+    const model = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
+    // Climb: +0.5 m per 6 m forward ≈ 8.33 %
+    expect(model.slope[250]!.y).toBeCloseTo((0.5 / 6) * 100, 6)
+  })
+
   it('detects descents and aggregates whole-activity stats', () => {
     const model = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
     expect(model.descents).toHaveLength(1)

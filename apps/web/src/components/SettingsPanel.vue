@@ -32,6 +32,7 @@ const fields: Field[] = [
     max: 500,
   },
   { key: 'pauseThresholdS', label: 'Pause threshold', unit: 's', min: 5, max: 600 },
+  { key: 'slopeWindowM', label: 'Slope window', unit: 'm', min: 10, max: 2000 },
 ]
 
 const values = computed(() => store.settings)

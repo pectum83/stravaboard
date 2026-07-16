@@ -23,7 +23,7 @@ function options(streams = climbStreams(), settings = DEFAULT_SETTINGS) {
 }
 
 describe('buildChartOptions', () => {
-  it('builds the five series with settings-derived names', () => {
+  it('builds the six series with settings-derived names', () => {
     const series = options().series as LineSeriesOption[]
     expect(series.map((s) => s.name)).toEqual([
       'Instant (60s)',
@@ -31,8 +31,23 @@ describe('buildChartOptions', () => {
       'Long (5min)',
       'Ascent mean',
       'Descent mean',
+      'Slope (100m)',
     ])
     expect(series.every((s) => s.type === 'line')).toBe(true)
+  })
+
+  it('puts the slope series on its own % axis with correct grades', () => {
+    const opts = options()
+    expect(opts.yAxis).toHaveLength(2)
+    const percentAxis = (opts.yAxis as { axisLabel: { formatter: string } }[])[1]!
+    expect(percentAxis.axisLabel.formatter).toBe('{value} %')
+
+    const slope = (opts.series as LineSeriesOption[])[5]!
+    expect(slope.yAxisIndex).toBe(1)
+    const data = slope.data as ([number, number] | null)[]
+    // climb: +0.5 m per 1 m forward = 50 %; descent: -1 m per m = -100 %
+    expect(data[600]![1]).toBeCloseTo(50, 6)
+    expect(data[1500]![1]).toBeCloseTo(-100, 6)
   })
 
   it('renders the ascent as horizontal segments at the mean speed', () => {
@@ -86,7 +101,7 @@ describe('buildChartOptions', () => {
   it('handles missing altitude as an empty chart rather than crashing', () => {
     const series = options({ time: [], distance: [], altitude: null, latlng: null })
       .series as LineSeriesOption[]
-    expect(series).toHaveLength(5)
+    expect(series).toHaveLength(6)
     expect(series[0]!.data).toEqual([])
   })
 

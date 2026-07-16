@@ -1,5 +1,6 @@
 export * from './smoothing.js'
 export * from './windowed.js'
+export * from './slope.js'
 export * from './ascents.js'
 export * from './pauses.js'
 export * from './stats.js'

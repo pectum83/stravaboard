@@ -11,6 +11,8 @@ local SQLite database and plots five vertical-speed series over distance:
   inside a climb filtered out (thresholds configurable), the value written at
   the right end of each segment
 - **Descent mean** — the exact mirror for descents, drawn below zero
+- **Terrain slope** — the grade in % over a 100 m distance window
+  (configurable), dashed on its own right-side axis
 
 Ascent/descent means exclude **pauses**: periods where the GPS position stays
 within ~5 m for more than 30 s (threshold configurable) — detected from

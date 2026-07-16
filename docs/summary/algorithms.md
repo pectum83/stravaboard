@@ -8,8 +8,8 @@ All throw on stream length mismatch. Re-exported via `packages/shared/src/index.
 
 ```ts
 Settings { instantWindowS, shortWindowS, longWindowS,
-           ascentMinGainM, ascentDescentToleranceM, pauseThresholdS }
-DEFAULT_SETTINGS = { 60, 120, 300, 30, 10, 30 }   // same order
+           ascentMinGainM, ascentDescentToleranceM, pauseThresholdS, slopeWindowM }
+DEFAULT_SETTINGS = { 60, 120, 300, 30, 10, 30, 100 }   // same order
 ActivityStreams { time, distance, altitude|null, latlng|null }
 ```
 
@@ -19,6 +19,14 @@ Per sample: centered window `[t−W/2, t+W/2]` via binary search; speed =
 `Δalt/Δt·3600` m/h → `VSpeedPoint {x: km, y: m/h|null}`. Emits `y=null`
 (breaks the chart line) when the preceding sample gap or the window span
 exceeds `gapFactor·windowS`.
+
+## slope.ts — `windowedSlope(distance, altitude, {windowM})`
+
+Terrain grade in % over a **centered distance window** (`slopeWindowM`
+setting, default 100 m): slope = Δalt/Δdist·100 across [d−W/2, d+W/2] via
+binary search. Distance-domain, so pauses/time gaps need no handling; `y=null`
+only when the window has zero horizontal span (fully stationary). Returns
+`VSpeedPoint[]` (x in km).
 
 ## smoothing.ts — `medianFilter(values, size)`
 

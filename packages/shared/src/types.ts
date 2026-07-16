@@ -39,6 +39,8 @@ export interface Settings {
   ascentDescentToleranceM: number
   /** Minimum stationary duration excluded from ascent/descent means, seconds. */
   pauseThresholdS: number
+  /** Distance window for the terrain-slope series, meters. */
+  slopeWindowM: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ascentMinGainM: 30,
   ascentDescentToleranceM: 10,
   pauseThresholdS: 30,
+  slopeWindowM: 100,
 }
 
 export type SyncStateName = 'idle' | 'syncing' | 'waiting_rate_limit' | 'error'

@@ -42,9 +42,12 @@ VSpeedModel {streams, instant, short, long, ascents, descents, pauses,
 ascentStats, descentStats}`. Instant series runs on `medianFilter(alt, 5)`.
   Single computation point for chart + stats + segments.
 - `chart/buildChartOptions.ts` — **rendering only**, `(model, settings) →
-EChartsOption`. 5 line series; colors = validated dataviz categorical slots
+EChartsOption`. 6 line series; colors = validated dataviz categorical slots
   (blue/aqua/yellow instant/short/long, green ascent, magenta `#e87ba4`
-  descent; sub-3:1 colors are relieved by direct end-labels). Segment series
+  descent, violet `#4a3aa7` slope — orange failed validation next to magenta;
+  sub-3:1 colors are relieved by direct end-labels). The slope series is
+  dashed on a second right-side `%` yAxis (`yAxisIndex: 1`, `alignTicks` so
+  zero lines match) with its own tooltip valueFormatter. Segment series
   (ascent/descent means): one horizontal segment per detection,
   `[startKm,v] → {value:[endKm,v], label:{show, position:'right', formatter:
 rounded value}} → null`. **Gotcha: per-datapoint labels only render on
@@ -84,6 +87,6 @@ maptilerKey|null}`. States: `latlng===null` → "No GPS trace" text; WebGL
   immediately, Clear button only when a filter is active.
 - `ActivityStats.vue` — props `{ascent, descent}: SegmentAggregate`; renders
   `↑ 650 m · 612 m/h` / `—` when null.
-- `SettingsPanel.vue` — 6 number inputs (fields array), clamps to min/max,
+- `SettingsPanel.vue` — 7 number inputs (fields array), clamps to min/max,
   writes through settings store. `SyncStatusBar.vue` — polls
   `/api/sync/status` every 2 s, "Sync now" button, emits `synced`.
