@@ -18,7 +18,21 @@ const INK_MUTED = '#898781'
 const GRID_LINE = '#e1e0d9'
 const AXIS_LINE = '#c3c2b7'
 
-export function buildChartOptions(model: VSpeedModel, settings: Settings): EChartsOption {
+export interface ChartOptionsOpts {
+  /**
+   * Phone-sized rendering: tighter grid margins and no series-name end
+   * labels (the legend still identifies every series; per-segment value
+   * labels stay). Legends wrap to two rows on narrow screens, hence the
+   * larger top margin.
+   */
+  compact?: boolean
+}
+
+export function buildChartOptions(
+  model: VSpeedModel,
+  settings: Settings,
+  { compact = false }: ChartOptionsOpts = {},
+): EChartsOption {
   const series: LineSeriesOption[] = [
     lineSeries(`Instant (${settings.instantWindowS}s)`, toPairs(model.instant), COLORS.instant, {
       // The instant series is intrinsically spiky; keep it recessive so the
@@ -45,6 +59,10 @@ export function buildChartOptions(model: VSpeedModel, settings: Settings): EChar
     }),
   ]
 
+  if (compact) {
+    for (const s of series) s.endLabel = { show: false }
+  }
+
   return {
     animation: false,
     legend: {
@@ -54,7 +72,9 @@ export function buildChartOptions(model: VSpeedModel, settings: Settings): EChar
       itemHeight: 4,
       textStyle: { color: '#52514e' },
     },
-    grid: { left: 64, right: 110, top: 36, bottom: 56 },
+    grid: compact
+      ? { left: 44, right: 54, top: 52, bottom: 40 }
+      : { left: 64, right: 110, top: 36, bottom: 56 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross', label: { precision: 1 } },
@@ -77,7 +97,8 @@ export function buildChartOptions(model: VSpeedModel, settings: Settings): EChar
     yAxis: [
       {
         type: 'value',
-        name: 'm/h',
+        // The wrapped two-row legend on phones would collide with the name.
+        name: compact ? '' : 'm/h',
         nameTextStyle: { color: INK_MUTED },
         axisLabel: { color: INK_MUTED },
         axisLine: { show: false },

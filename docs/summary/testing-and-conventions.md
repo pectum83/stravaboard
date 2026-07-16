@@ -27,6 +27,9 @@
   failures. New component → mounted component test.
 - Map assertions in e2e must tolerate WebGL-less environments (assert canvas
   OR the "Map unavailable" fallback).
+- `e2e/mobile.spec.ts` runs at iPhone 15 dimensions (393×659 viewport,
+  isMobile/hasTouch on chromium) — layout changes must keep it green (stacked
+  panes, no horizontal overflow).
 
 ## Gates — all must pass before every commit
 

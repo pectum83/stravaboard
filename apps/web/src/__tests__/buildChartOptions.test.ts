@@ -105,6 +105,20 @@ describe('buildChartOptions', () => {
     expect(series[0]!.data).toEqual([])
   })
 
+  it('tightens margins and drops series-name end labels in compact mode', () => {
+    const opts = buildChartOptions(
+      computeVSpeedModel(climbStreams(), DEFAULT_SETTINGS),
+      DEFAULT_SETTINGS,
+      { compact: true },
+    )
+    expect(opts.grid).toEqual({ left: 44, right: 54, top: 52, bottom: 40 })
+    const series = opts.series as LineSeriesOption[]
+    expect(series.every((s) => (s.endLabel as { show: boolean }).show === false)).toBe(true)
+    // Per-segment value labels survive compact mode.
+    const ascentEnd = (series[3]!.data as { label?: { show: boolean } }[])[1]!
+    expect(ascentEnd.label?.show).toBe(true)
+  })
+
   it('keeps x values in kilometers', () => {
     const short = (options().series as LineSeriesOption[])[1]!
     const data = short.data as ([number, number] | null)[]

@@ -159,6 +159,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* iOS Safari: track the dynamic toolbar and notch/Dynamic Island. */
+  height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
 }
 
 .connect {
@@ -278,5 +282,58 @@ main {
 
 .placeholder.error {
   color: #d03b3b;
+}
+
+/* Phones and small tablets: stack everything vertically and let the page
+   scroll; the activity list keeps its own bounded scroll area. */
+@media (max-width: 900px) {
+  .dashboard {
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  .panes {
+    flex-direction: column;
+    flex: none;
+  }
+
+  aside {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e1e0d9;
+  }
+
+  .list-wrap {
+    max-height: 38vh;
+    overflow-y: auto;
+  }
+
+  main {
+    padding: 8px;
+  }
+
+  .controls {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .controls .stats {
+    margin-left: 0;
+  }
+
+  .visuals {
+    flex-direction: column;
+  }
+
+  .chart-area {
+    flex: none;
+    height: 380px;
+  }
+
+  .map-area {
+    flex: none;
+    height: 320px;
+    min-width: 0;
+  }
 }
 </style>

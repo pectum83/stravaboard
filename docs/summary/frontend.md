@@ -3,6 +3,13 @@
 Single page, no router. Entry `main.ts` → `App.vue` → `pages/DashboardPage.vue`.
 Scoped CSS, light palette only, no CSS framework.
 
+**Responsive**: one breakpoint, `(max-width: 900px)` (`COMPACT_MEDIA_QUERY` in
+`composables/useMediaQuery.ts`). Below it DashboardPage stacks vertically
+(full-width list capped at 38vh, chart 380px, map 320px, page scrolls,
+controls wrap) and the chart renders in compact mode (see buildChartOptions).
+`index.html` sets `viewport-fit=cover`; `.dashboard` uses `100dvh` +
+`env(safe-area-inset-*)` for iPhone notch/Dynamic Island.
+
 ## Data flow
 
 - `api/client.ts` — typed fetch wrappers: `authStatus`, `activities(params)`
@@ -47,7 +54,10 @@ EChartsOption`. 6 line series; colors = validated dataviz categorical slots
   descent, violet `#4a3aa7` slope — orange failed validation next to magenta;
   sub-3:1 colors are relieved by direct end-labels). The slope series is
   dashed on a second right-side `%` yAxis (`yAxisIndex: 1`, `alignTicks` so
-  zero lines match) with its own tooltip valueFormatter. Segment series
+  zero lines match) with its own tooltip valueFormatter. Third param
+  `{compact}` (phones): tighter grid, no series-name endLabels and no `m/h`
+  axis name (both collide with the two-row wrapped legend); per-segment value
+  labels stay. Segment series
   (ascent/descent means): one horizontal segment per detection,
   `[startKm,v] → {value:[endKm,v], label:{show, position:'right', formatter:
 rounded value}} → null`. **Gotcha: per-datapoint labels only render on

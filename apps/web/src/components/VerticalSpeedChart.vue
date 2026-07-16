@@ -14,6 +14,7 @@ import type { Settings } from '@stravaboard/shared'
 import { buildChartOptions } from '../chart/buildChartOptions'
 import type { VSpeedModel } from '../chart/computeVSpeed'
 import { nearestIndexByKm } from '../chart/cursor'
+import { COMPACT_MEDIA_QUERY, useMediaQuery } from '../composables/useMediaQuery'
 
 use([
   CanvasRenderer,
@@ -34,7 +35,10 @@ const emit = defineEmits<{
   hoverIndex: [index: number | null]
 }>()
 
-const options = computed(() => buildChartOptions(props.model, props.settings))
+const compact = useMediaQuery(COMPACT_MEDIA_QUERY)
+const options = computed(() =>
+  buildChartOptions(props.model, props.settings, { compact: compact.value }),
+)
 
 interface AxisPointerEvent {
   axesInfo?: { axisDim: string; value: number }[]

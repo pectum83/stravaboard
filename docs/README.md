@@ -22,7 +22,9 @@ streets / satellite / 3D-terrain layers, and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
 sport type. A **"↻ Reload from Strava"** button re-fetches the selected
 activity (data and streams) — use it after renaming, cropping or otherwise
-editing an activity on strava.com.
+editing an activity on strava.com. The layout is responsive: on phones the
+list, chart and map stack vertically and the chart switches to a compact
+rendering.
 
 ## Stack
 
