@@ -7,5 +7,5 @@ export function registerSyncRoutes(app: FastifyInstance, sync: SyncService): voi
     return reply.code(202).send({ started: true })
   })
 
-  app.get('/api/sync/status', async () => sync.status())
+  app.get('/api/sync/status', async (req) => sync.status(req.athleteId))
 }

@@ -20,6 +20,16 @@ const { activities, selectedId, hasMore, loading } = storeToRefs(activitiesStore
 const { settings } = storeToRefs(settingsStore)
 
 const connected = ref<boolean | null>(null)
+const userName = ref<string | null>(null)
+
+/** Athlete id shown after a login attempt outside the family allowlist. */
+const deniedAthleteId = new URLSearchParams(window.location.search).get('denied')
+
+async function logout(): Promise<void> {
+  await api.logout()
+  // Full reload: clears every store and lands on the sign-in page.
+  window.location.href = '/'
+}
 
 const {
   streams,
@@ -64,6 +74,7 @@ async function reloadActivity(): Promise<void> {
 onMounted(async () => {
   const status = await api.authStatus()
   connected.value = status.connected
+  userName.value = status.name ?? null
   if (status.connected) {
     await Promise.all([
       settingsStore.load(),
@@ -81,13 +92,21 @@ onMounted(async () => {
     <template v-if="connected === false">
       <main class="connect">
         <h1>stravaBoard</h1>
-        <p>Connect your Strava account to import and analyse your activities.</p>
+        <p v-if="deniedAthleteId" class="denied">
+          This Strava account (athlete id <strong>{{ deniedAthleteId }}</strong
+          >) is not on the family list yet. Ask the administrator to add this id, then sign in
+          again.
+        </p>
+        <p>Sign in with your Strava account to import and analyse your activities.</p>
         <a class="connect-button" href="/api/auth/strava/login">Connect with Strava</a>
       </main>
     </template>
 
     <template v-else-if="connected">
-      <SyncStatusBar @synced="activitiesStore.loadFirstPage()" />
+      <SyncStatusBar @synced="activitiesStore.loadFirstPage()">
+        <span v-if="userName" class="user">{{ userName }}</span>
+        <button type="button" class="logout" @click="logout">Log out</button>
+      </SyncStatusBar>
       <div class="panes">
         <aside>
           <ActivityFilters
@@ -178,6 +197,33 @@ onMounted(async () => {
   color: white;
   text-decoration: none;
   font-weight: 600;
+}
+
+.denied {
+  max-width: 420px;
+  margin: 0 auto 16px;
+  padding: 10px 14px;
+  border: 1px solid #eda100;
+  border-radius: 8px;
+  background: #fdf6e3;
+  color: #52514e;
+}
+
+.user {
+  color: #52514e;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.logout {
+  padding: 5px 12px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #52514e;
 }
 
 .panes {

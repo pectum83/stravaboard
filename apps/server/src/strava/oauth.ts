@@ -19,38 +19,44 @@ export function buildAuthorizeUrl(config: Config): string {
   return `${config.STRAVA_OAUTH_BASE}/authorize?${params}`
 }
 
-/** Exchange an authorization code for tokens and persist them. */
+/**
+ * Exchange an authorization code for tokens. Does NOT persist anything —
+ * the caller decides (allowlist check) whether this athlete gets an account.
+ */
 export async function exchangeCode(
   config: Config,
   db: Db,
   code: string,
   fetchImpl: FetchLike = fetch,
-): Promise<StoredTokens> {
+): Promise<{ tokens: StoredTokens; athleteName: string }> {
   const body = await tokenRequest(config, { grant_type: 'authorization_code', code }, fetchImpl)
-  const athleteId = body.athlete?.id
-  if (!athleteId) throw new Error('token response has no athlete id')
+  const athlete = body.athlete
+  if (!athlete?.id) throw new Error('token response has no athlete id')
   const tokens: StoredTokens = {
-    athleteId,
+    athleteId: athlete.id,
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
     expiresAt: body.expires_at,
   }
-  saveTokens(db, tokens)
-  return tokens
+  const athleteName =
+    [athlete.firstname, athlete.lastname].filter(Boolean).join(' ') || `Athlete ${athlete.id}`
+  return { tokens, athleteName }
 }
 
 /**
- * Return a valid access token, refreshing it first when (nearly) expired.
- * Strava rotates refresh tokens: the one returned by each refresh MUST be
- * persisted or the app silently loses access when the old one is revoked.
+ * Return a valid access token for the athlete, refreshing it first when
+ * (nearly) expired. Strava rotates refresh tokens: the one returned by each
+ * refresh MUST be persisted or the app silently loses access when the old
+ * one is revoked.
  */
 export async function ensureFreshToken(
   config: Config,
   db: Db,
+  athleteId: number,
   fetchImpl: FetchLike = fetch,
   nowS: () => number = () => Math.floor(Date.now() / 1000),
 ): Promise<string> {
-  const stored = getTokens(db)
+  const stored = getTokens(db, athleteId)
   if (!stored) throw new NotConnectedError()
   if (stored.expiresAt - nowS() > REFRESH_MARGIN_S) return stored.accessToken
 
@@ -60,7 +66,7 @@ export async function ensureFreshToken(
     fetchImpl,
   )
   const next: StoredTokens = {
-    athleteId: stored.athleteId,
+    athleteId,
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
     expiresAt: body.expires_at,

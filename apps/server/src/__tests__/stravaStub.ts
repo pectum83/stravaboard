@@ -8,6 +8,8 @@ export interface StravaStubOptions {
   noStreams?: number[]
   /** Return 429 for this many API requests before behaving normally. */
   rateLimit429Count?: number
+  /** Athlete returned by the token endpoint (OAuth code exchange / refresh). */
+  athlete?: { id: number; firstname?: string; lastname?: string }
 }
 
 export function makeActivity(
@@ -62,7 +64,7 @@ export function stravaStub(opts: StravaStubOptions = {}) {
         access_token: 'fresh',
         refresh_token: 'rotated',
         expires_at: Math.floor(Date.now() / 1000) + 21600,
-        athlete: { id: 1 },
+        athlete: opts.athlete ?? { id: 1 },
       })
     }
 

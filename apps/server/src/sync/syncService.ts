@@ -12,6 +12,7 @@ import {
 } from '../repositories/activities.repo.js'
 import { deleteStreams, getStreams, saveStreams } from '../repositories/streams.repo.js'
 import { getSyncState, saveSyncState } from '../repositories/syncState.repo.js'
+import { listConnectedAthleteIds } from '../repositories/tokens.repo.js'
 import { NotFoundError, RateLimitError, type StravaClient } from '../strava/client.js'
 import { NotConnectedError } from '../strava/oauth.js'
 import type { StravaStreamSet, StravaSummaryActivity } from '../strava/types.js'
@@ -37,26 +38,29 @@ function isTransientNetworkError(err: unknown): boolean {
   return err instanceof TypeError
 }
 
+interface AthleteSyncState {
+  state: SyncStatus['state']
+  fetched: number
+  resumeAtMs: number | null
+  lastError: string | null
+}
+
 /**
- * Incremental, resumable Strava sync.
+ * Incremental, resumable Strava sync, one athlete at a time (the Strava rate
+ * limit is per application, so athletes share one RateLimiter via the client).
  *
- * Pass 1 pages through /athlete/activities (oldest first thanks to ?after)
- * and upserts summaries as streams_status='pending'. Pass 2 fetches streams
- * for every pending activity in start order; the checkpoint only advances
- * once an activity's streams are stored, so a crash or rate-limit pause
- * resumes exactly where it left off.
+ * Per athlete: pass 1 pages through /athlete/activities (oldest first thanks
+ * to ?after) and upserts summaries as streams_status='pending'. Pass 2
+ * fetches streams for every pending activity in start order; the checkpoint
+ * only advances once an activity's streams are stored, so a crash or
+ * rate-limit pause resumes exactly where it left off. Pass 3 backfills GPS
+ * tracks for activities synced before the latlng column existed ('[]' is the
+ * terminal "no GPS" marker, so each activity is re-fetched at most once).
  *
- * Pass 3 backfills the GPS track for activities synced before the latlng
- * column existed. It runs last so a large backfill never starves new
- * activities, and every visit writes a non-NULL latlng value ('[]' when the
- * activity has no GPS), so each legacy activity is re-fetched at most once
- * ever; progress lives in the column itself, making the pass resumable.
+ * One athlete failing (revoked tokens, API errors) does not block the others.
  */
 export class SyncService {
-  private state: SyncStatus['state'] = 'idle'
-  private fetched = 0
-  private resumeAtMs: number | null = null
-  private lastError: string | null = null
+  private readonly states = new Map<number, AthleteSyncState>()
   private running: Promise<void> | null = null
 
   private readonly perPage: number
@@ -78,15 +82,9 @@ export class SyncService {
   /** Fire-and-forget start; no-op when a sync is already running. */
   start(): void {
     if (this.running) return
-    this.running = this.run()
-      .catch((err: unknown) => {
-        this.state = 'error'
-        this.lastError = err instanceof Error ? err.message : String(err)
-        this.log(`sync failed: ${this.lastError}`)
-      })
-      .finally(() => {
-        this.running = null
-      })
+    this.running = this.run().finally(() => {
+      this.running = null
+    })
   }
 
   /** Resolves when the current sync (if any) is done — for tests and shutdown. */
@@ -94,44 +92,83 @@ export class SyncService {
     await this.running
   }
 
-  status(): SyncStatus {
+  status(athleteId: number): SyncStatus {
+    const st = this.stateFor(athleteId)
     return {
-      state: this.state,
-      fetchedActivities: this.fetched,
-      pendingStreams: countPendingStreams(this.db),
-      pendingLatlngBackfill: countStreamsMissingLatlng(this.db),
-      ...(this.resumeAtMs !== null && this.state === 'waiting_rate_limit'
-        ? { rateLimitResumeAt: new Date(this.resumeAtMs).toISOString() }
+      state: st.state,
+      fetchedActivities: st.fetched,
+      pendingStreams: countPendingStreams(this.db, athleteId),
+      pendingLatlngBackfill: countStreamsMissingLatlng(this.db, athleteId),
+      ...(st.resumeAtMs !== null && st.state === 'waiting_rate_limit'
+        ? { rateLimitResumeAt: new Date(st.resumeAtMs).toISOString() }
         : {}),
-      ...(this.lastError !== null && this.state === 'error' ? { error: this.lastError } : {}),
+      ...(st.lastError !== null && st.state === 'error' ? { error: st.lastError } : {}),
     }
   }
 
+  /**
+   * Re-fetch one activity's summary and streams from Strava on demand — for
+   * activities edited on strava.com after they were synced. Callers verify
+   * ownership and handle NotFoundError / RateLimitError.
+   */
+  async refreshActivity(id: number): Promise<ActivityRow> {
+    const existing = getActivity(this.db, id)
+    if (!existing) throw new NotFoundError()
+    const athleteId = existing.athleteId
+    const detail = await this.client.getActivity(athleteId, id)
+    upsertActivitySummary(this.db, toRow(athleteId, detail))
+    try {
+      const set = await this.client.getStreams(athleteId, id)
+      saveStreams(this.db, id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
+      setStreamsStatus(this.db, id, 'done')
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) throw err
+      deleteStreams(this.db, id)
+      setStreamsStatus(this.db, id, 'none')
+    }
+    return getActivity(this.db, id)!
+  }
+
+  private stateFor(athleteId: number): AthleteSyncState {
+    let st = this.states.get(athleteId)
+    if (!st) {
+      st = { state: 'idle', fetched: 0, resumeAtMs: null, lastError: null }
+      this.states.set(athleteId, st)
+    }
+    return st
+  }
+
   private async run(): Promise<void> {
-    this.state = 'syncing'
-    this.fetched = 0
-    this.lastError = null
-    saveSyncState(this.db, { status: 'syncing', error: null })
+    for (const athleteId of listConnectedAthleteIds(this.db)) {
+      await this.runFor(athleteId)
+    }
+  }
+
+  private async runFor(athleteId: number): Promise<void> {
+    const st = this.stateFor(athleteId)
+    st.state = 'syncing'
+    st.fetched = 0
+    st.lastError = null
+    saveSyncState(this.db, athleteId, { status: 'syncing', error: null })
 
     try {
-      await this.retryingOnRateLimit(() => this.fetchNewSummaries())
-      await this.retryingOnRateLimit(() => this.fetchPendingStreams())
-      await this.retryingOnRateLimit(() => this.backfillLatlng())
-      this.state = 'idle'
-      saveSyncState(this.db, { status: 'idle' })
-      this.log(`sync done: ${this.fetched} activities fetched`)
+      await this.retryingOnRateLimit(athleteId, () => this.fetchNewSummaries(athleteId))
+      await this.retryingOnRateLimit(athleteId, () => this.fetchPendingStreams(athleteId))
+      await this.retryingOnRateLimit(athleteId, () => this.backfillLatlng(athleteId))
+      st.state = 'idle'
+      saveSyncState(this.db, athleteId, { status: 'idle' })
+      this.log(`sync done for athlete ${athleteId}: ${st.fetched} activities fetched`)
     } catch (err) {
       if (err instanceof NotConnectedError) {
-        this.state = 'idle'
-        saveSyncState(this.db, { status: 'idle' })
-        this.log('sync skipped: no Strava account connected')
+        st.state = 'idle'
+        saveSyncState(this.db, athleteId, { status: 'idle' })
         return
       }
-      saveSyncState(this.db, {
-        status: 'error',
-        error: err instanceof Error ? err.message : String(err),
-      })
-      throw err
+      // Record and move on — one athlete's failure must not block the family.
+      st.state = 'error'
+      st.lastError = err instanceof Error ? err.message : String(err)
+      saveSyncState(this.db, athleteId, { status: 'error', error: st.lastError })
+      this.log(`sync failed for athlete ${athleteId}: ${st.lastError}`)
     }
   }
 
@@ -142,26 +179,27 @@ export class SyncService {
    * the last failure resets the retry budget — only a *persistently* dead
    * network exhausts it.
    */
-  private async retryingOnRateLimit(work: () => Promise<void>): Promise<void> {
+  private async retryingOnRateLimit(athleteId: number, work: () => Promise<void>): Promise<void> {
+    const st = this.stateFor(athleteId)
     let networkFailures = 0
     for (;;) {
-      const progressBefore = this.progressMarker()
+      const progressBefore = this.progressMarker(athleteId)
       try {
         await work()
         return
       } catch (err) {
         if (err instanceof RateLimitError) {
-          this.state = 'waiting_rate_limit'
-          this.resumeAtMs = err.resumeAtMs
+          st.state = 'waiting_rate_limit'
+          st.resumeAtMs = err.resumeAtMs
           const waitMs = Math.max(0, err.resumeAtMs - this.nowMs()) + 1000
           this.log(`rate limited, resuming at ${new Date(err.resumeAtMs).toISOString()}`)
           await this.sleep(waitMs)
-          this.state = 'syncing'
-          this.resumeAtMs = null
+          st.state = 'syncing'
+          st.resumeAtMs = null
           continue
         }
         if (isTransientNetworkError(err)) {
-          if (this.progressMarker() !== progressBefore) networkFailures = 0
+          if (this.progressMarker(athleteId) !== progressBefore) networkFailures = 0
           networkFailures++
           if (networkFailures > MAX_NETWORK_FAILURES) throw err
           const backoffMs = Math.min(60_000, 2000 * 2 ** (networkFailures - 1))
@@ -176,28 +214,30 @@ export class SyncService {
     }
   }
 
-  /** Cheap fingerprint of sync progress, used to reset the network-retry budget. */
-  private progressMarker(): string {
-    return `${this.fetched}:${countPendingStreams(this.db)}:${countStreamsMissingLatlng(this.db)}`
+  /** Cheap fingerprint of one athlete's sync progress, resets the network-retry budget. */
+  private progressMarker(athleteId: number): string {
+    const st = this.stateFor(athleteId)
+    return `${st.fetched}:${countPendingStreams(this.db, athleteId)}:${countStreamsMissingLatlng(this.db, athleteId)}`
   }
 
-  private async fetchNewSummaries(): Promise<void> {
+  private async fetchNewSummaries(athleteId: number): Promise<void> {
     // -1: re-include the checkpoint second itself, in case two activities
     // share it; upserts are idempotent so the overlap is free.
-    const after = Math.max(0, getSyncState(this.db).lastActivityStartEpoch - 1)
+    const after = Math.max(0, getSyncState(this.db, athleteId).lastActivityStartEpoch - 1)
+    const st = this.stateFor(athleteId)
     for (let page = 1; ; page++) {
-      const batch = await this.client.listActivities(after, page, this.perPage)
+      const batch = await this.client.listActivities(athleteId, after, page, this.perPage)
       for (const a of batch) {
-        upsertActivitySummary(this.db, toRow(a))
-        this.fetched++
+        upsertActivitySummary(this.db, toRow(athleteId, a))
+        st.fetched++
       }
       if (batch.length < this.perPage) return
     }
   }
 
-  private async fetchPendingStreams(): Promise<void> {
+  private async fetchPendingStreams(athleteId: number): Promise<void> {
     for (;;) {
-      const pending = listPendingStreams(this.db, 50)
+      const pending = listPendingStreams(this.db, athleteId, 50)
       if (pending.length === 0) return
       for (const activity of pending) {
         await this.fetchStreamsFor(activity)
@@ -207,7 +247,7 @@ export class SyncService {
 
   private async fetchStreamsFor(activity: ActivityRow): Promise<void> {
     try {
-      const set = await this.client.getStreams(activity.id)
+      const set = await this.client.getStreams(activity.athleteId, activity.id)
       saveStreams(this.db, activity.id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
       setStreamsStatus(this.db, activity.id, 'done')
     } catch (err) {
@@ -215,39 +255,21 @@ export class SyncService {
       if (!(err instanceof NotFoundError)) throw err
       setStreamsStatus(this.db, activity.id, 'none')
     }
-    const checkpoint = getSyncState(this.db).lastActivityStartEpoch
+    const checkpoint = getSyncState(this.db, activity.athleteId).lastActivityStartEpoch
     if (activity.startDateEpoch > checkpoint) {
-      saveSyncState(this.db, { lastActivityStartEpoch: activity.startDateEpoch })
+      saveSyncState(this.db, activity.athleteId, {
+        lastActivityStartEpoch: activity.startDateEpoch,
+      })
     }
   }
 
-  /**
-   * Re-fetch one activity's summary and streams from Strava on demand — for
-   * activities edited on strava.com after they were synced (renamed, cropped,
-   * privacy changed). Callers handle NotFoundError (gone from Strava; local
-   * data untouched) and RateLimitError. Streams that disappeared mark the
-   * activity 'none' and drop the stale rows.
-   */
-  async refreshActivity(id: number): Promise<ActivityRow> {
-    const detail = await this.client.getActivity(id)
-    upsertActivitySummary(this.db, toRow(detail))
-    try {
-      const set = await this.client.getStreams(id)
-      saveStreams(this.db, id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
-      setStreamsStatus(this.db, id, 'done')
-    } catch (err) {
-      if (!(err instanceof NotFoundError)) throw err
-      deleteStreams(this.db, id)
-      setStreamsStatus(this.db, id, 'none')
-    }
-    return getActivity(this.db, id)!
-  }
-
-  private async backfillLatlng(): Promise<void> {
+  private async backfillLatlng(athleteId: number): Promise<void> {
     for (;;) {
-      const rows = listStreamsMissingLatlng(this.db, 50)
+      const rows = listStreamsMissingLatlng(this.db, athleteId, 50)
       if (rows.length === 0) return
-      this.log(`backfilling GPS tracks: ${countStreamsMissingLatlng(this.db)} activities left`)
+      this.log(
+        `backfilling GPS tracks: ${countStreamsMissingLatlng(this.db, athleteId)} activities left`,
+      )
       for (const activity of rows) {
         await this.refetchStreamsFor(activity)
       }
@@ -261,7 +283,7 @@ export class SyncService {
    */
   private async refetchStreamsFor(activity: ActivityRow): Promise<void> {
     try {
-      const set = await this.client.getStreams(activity.id)
+      const set = await this.client.getStreams(activity.athleteId, activity.id)
       saveStreams(this.db, activity.id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err
@@ -278,19 +300,10 @@ export class SyncService {
   }
 }
 
-/** Map a Strava stream set to the stored shape; a missing latlng stream means "no GPS". */
-function toStoredStreams(set: StravaStreamSet): ActivityStreams {
-  return {
-    time: set.time?.data ?? [],
-    distance: set.distance?.data ?? [],
-    altitude: set.altitude?.data ?? null,
-    latlng: set.latlng?.data ?? [],
-  }
-}
-
-function toRow(a: StravaSummaryActivity): ActivityRow {
+function toRow(athleteId: number, a: StravaSummaryActivity): ActivityRow {
   return {
     id: a.id,
+    athleteId,
     name: a.name,
     sportType: a.sport_type,
     startDate: a.start_date,
@@ -301,5 +314,15 @@ function toRow(a: StravaSummaryActivity): ActivityRow {
     totalElevationGainM: a.total_elevation_gain,
     streamsStatus: 'pending',
     rawSummary: JSON.stringify(a),
+  }
+}
+
+/** Map a Strava stream set to the stored shape; a missing latlng stream means "no GPS". */
+function toStoredStreams(set: StravaStreamSet): ActivityStreams {
+  return {
+    time: set.time?.data ?? [],
+    distance: set.distance?.data ?? [],
+    altitude: set.altitude?.data ?? null,
+    latlng: set.latlng?.data ?? [],
   }
 }

@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.1",
     "@fastify/static": "^8.2.0",
     "@stravaboard/shared": "workspace:*",
     "better-sqlite3": "^12.2.0",

@@ -1,32 +1,45 @@
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
-/** Single-row table (id = 1): tokens of the one connected athlete. */
-export const oauthTokens = sqliteTable('oauth_tokens', {
+/** One row per family member who has connected their Strava account. */
+export const athletes = sqliteTable('athletes', {
+  /** Strava athlete id. */
   id: integer('id').primaryKey(),
-  athleteId: integer('athlete_id').notNull(),
+  displayName: text('display_name').notNull(),
+  createdAt: text('created_at').notNull(),
+})
+
+/** One row per connected athlete: their OAuth tokens. */
+export const oauthTokens = sqliteTable('oauth_tokens', {
+  athleteId: integer('athlete_id').primaryKey(),
   accessToken: text('access_token').notNull(),
   refreshToken: text('refresh_token').notNull(),
   /** Unix epoch seconds. */
   expiresAt: integer('expires_at').notNull(),
 })
 
-export const activities = sqliteTable('activities', {
-  /** Strava activity id. */
-  id: integer('id').primaryKey(),
-  name: text('name').notNull(),
-  sportType: text('sport_type').notNull(),
-  /** ISO 8601 UTC. */
-  startDate: text('start_date').notNull(),
-  /** Unix epoch seconds — sync checkpoint currency. */
-  startDateEpoch: integer('start_date_epoch').notNull(),
-  distanceM: real('distance_m').notNull(),
-  movingTimeS: integer('moving_time_s').notNull(),
-  elapsedTimeS: integer('elapsed_time_s').notNull(),
-  totalElevationGainM: real('total_elevation_gain_m').notNull(),
-  streamsStatus: text('streams_status', { enum: ['pending', 'done', 'none'] }).notNull(),
-  /** Full Strava summary payload (JSON) so future features need no re-sync. */
-  rawSummary: text('raw_summary').notNull(),
-})
+export const activities = sqliteTable(
+  'activities',
+  {
+    /** Strava activity id. */
+    id: integer('id').primaryKey(),
+    /** Owner (Strava athlete id); default 0 only exists for the ALTER migration. */
+    athleteId: integer('athlete_id').notNull().default(0),
+    name: text('name').notNull(),
+    sportType: text('sport_type').notNull(),
+    /** ISO 8601 UTC. */
+    startDate: text('start_date').notNull(),
+    /** Unix epoch seconds — sync checkpoint currency. */
+    startDateEpoch: integer('start_date_epoch').notNull(),
+    distanceM: real('distance_m').notNull(),
+    movingTimeS: integer('moving_time_s').notNull(),
+    elapsedTimeS: integer('elapsed_time_s').notNull(),
+    totalElevationGainM: real('total_elevation_gain_m').notNull(),
+    streamsStatus: text('streams_status', { enum: ['pending', 'done', 'none'] }).notNull(),
+    /** Full Strava summary payload (JSON) so future features need no re-sync. */
+    rawSummary: text('raw_summary').notNull(),
+  },
+  (t) => [index('idx_activities_athlete_start').on(t.athleteId, t.startDateEpoch)],
+)
 
 export const activityStreams = sqliteTable('activity_streams', {
   activityId: integer('activity_id')
@@ -47,9 +60,9 @@ export const activityStreams = sqliteTable('activity_streams', {
   fetchedAt: text('fetched_at').notNull(),
 })
 
-/** Single-row table (id = 1): sync checkpoint and status. */
+/** One row per connected athlete: their sync checkpoint and status. */
 export const syncState = sqliteTable('sync_state', {
-  id: integer('id').primaryKey(),
+  athleteId: integer('athlete_id').primaryKey(),
   /** Epoch seconds of the newest fully-processed activity; sync resumes after it. */
   lastActivityStartEpoch: integer('last_activity_start_epoch').notNull().default(0),
   status: text('status').notNull().default('idle'),
@@ -57,6 +70,7 @@ export const syncState = sqliteTable('sync_state', {
 })
 
 export const settings = sqliteTable('settings', {
+  /** `settings:<athleteId>`. */
   key: text('key').primaryKey(),
   /** JSON-encoded value. */
   value: text('value').notNull(),

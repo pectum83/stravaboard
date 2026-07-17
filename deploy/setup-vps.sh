@@ -12,7 +12,8 @@ set -euo pipefail
 HOST="${1:-crovps}"
 APP_DIR=/home/ubuntu/stravaboard
 DOMAIN=strava.pectum.fr
-AUTH_USER=cro
+# Strava athlete ids allowed to sign in (comma-separated). Extend for family.
+ALLOWED_IDS="${ALLOWED_ATHLETE_IDS:-798002}"
 
 cd "$(dirname "$0")/.."
 
@@ -39,7 +40,10 @@ ssh "$HOST" 'sudo tee /etc/systemd/system/stravaboard.service >/dev/null && sudo
 
 echo "== .env =="
 if ssh "$HOST" "test -f $APP_DIR/.env"; then
-  echo ".env already present on the VPS — left untouched"
+  # Idempotent upgrades: add the multi-user vars to an existing .env.
+  ssh "$HOST" "grep -q '^COOKIE_SECRET=' $APP_DIR/.env || echo 'COOKIE_SECRET=$(openssl rand -hex 32)' >> $APP_DIR/.env"
+  ssh "$HOST" "grep -q '^ALLOWED_ATHLETE_IDS=' $APP_DIR/.env || echo 'ALLOWED_ATHLETE_IDS=$ALLOWED_IDS' >> $APP_DIR/.env"
+  echo ".env present — COOKIE_SECRET and ALLOWED_ATHLETE_IDS ensured"
 else
   {
     grep -E '^(STRAVA_CLIENT_ID|STRAVA_CLIENT_SECRET|MAPTILER_KEY)=' .env
@@ -49,21 +53,17 @@ else
     echo "DATABASE_PATH=$APP_DIR/data/stravaboard.sqlite"
     echo "WEB_DIST_PATH=$APP_DIR/web"
     echo "WEB_APP_URL=/"
+    echo "COOKIE_SECRET=$(openssl rand -hex 32)"
+    echo "ALLOWED_ATHLETE_IDS=$ALLOWED_IDS"
   } | ssh "$HOST" "cat > $APP_DIR/.env && chmod 600 $APP_DIR/.env && echo .env written"
 fi
 
-echo "== Caddyfile + basic auth =="
-if ssh "$HOST" 'test -f /etc/caddy/Caddyfile && grep -q strava.pectum.fr /etc/caddy/Caddyfile'; then
+echo "== Caddyfile =="
+if ssh "$HOST" 'test -f /etc/caddy/Caddyfile && grep -q reverse_proxy /etc/caddy/Caddyfile && ! grep -q basic_auth /etc/caddy/Caddyfile'; then
   echo "Caddyfile already configured — left untouched"
 else
-  PASSWORD=$(openssl rand -base64 18)
-  HASH=$(ssh "$HOST" "caddy hash-password --plaintext '$PASSWORD'")
-  sed "s|__BCRYPT_HASH__|$HASH|" deploy/Caddyfile | ssh "$HOST" 'sudo tee /etc/caddy/Caddyfile >/dev/null && sudo systemctl reload caddy'
-  echo
-  echo "  Basic-auth credentials (store them now, the password is not saved anywhere):"
-  echo "    user:     $AUTH_USER"
-  echo "    password: $PASSWORD"
-  echo
+  ssh "$HOST" 'sudo tee /etc/caddy/Caddyfile >/dev/null && sudo systemctl reload caddy' <deploy/Caddyfile
+  echo "Caddyfile installed — the app's Strava login is the only gate"
 fi
 
 echo "== Done. Next: deploy/deploy.sh =="

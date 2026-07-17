@@ -1,8 +1,11 @@
 # stravaBoard
 
-Private dashboard for analysing the **vertical speed** of your Strava activities.
-It syncs your activities (with their time/distance/altitude/GPS streams) into a
-local SQLite database and plots five vertical-speed series over distance:
+Private **family** dashboard for analysing the **vertical speed** of Strava
+activities. Each family member signs in with their own Strava account (an
+allowlist of athlete ids keeps strangers out) and sees strictly their own
+data. Activities sync (with their time/distance/altitude/GPS streams) into a
+local SQLite database, and the chart plots five vertical-speed series over
+distance:
 
 - **Instant** — computed over a 60 s window (configurable)
 - **Short-term** — 120 s window (configurable)
@@ -101,6 +104,24 @@ CI (`.github/workflows/ci.yml`) runs lint, format, typecheck, tests with
 coverage (shared ≥ 90 %, server ≥ 80 %), builds, and the e2e suite on every
 push and pull request.
 
+## Family accounts
+
+Authentication IS the Strava login: the OAuth callback creates the account,
+sets a long-lived signed session cookie, and everything the API serves is
+scoped to that athlete. Sync runs per athlete (shared Strava rate limit);
+settings, filters and stats are personal.
+
+To add a family member:
+
+1. Add their Strava athlete id to `ALLOWED_ATHLETE_IDS` in the `.env`
+   (comma-separated) and restart the server. If they sign in before being
+   added, the sign-in page shows their id — copy it from there.
+2. Check the Strava API application's **athlete capacity** at
+   <https://www.strava.com/settings/api> — new apps may be limited to one
+   connected athlete until an increase is requested.
+3. They open the site, click **Connect with Strava**, and their history
+   starts syncing.
+
 ## How the sync works
 
 1. `GET /athlete/activities?after=<checkpoint>` pages through everything newer
@@ -125,10 +146,11 @@ so future chart types need no re-sync. Back it up by copying the file.
 ## Deployment
 
 Production runs on a VPS at <https://strava.pectum.fr> behind Caddy
-(automatic Let's Encrypt HTTPS + **basic auth** — required: the API grants
-read access to all private activities and `/api/config` exposes the MapTiler
-key). The Fastify server serves the built web app itself and binds
-`127.0.0.1:3001` so nothing bypasses the proxy.
+(automatic Let's Encrypt HTTPS). Access control is the app's own Strava
+login + `ALLOWED_ATHLETE_IDS` allowlist — every API route except the auth
+flow and `/api/health` requires the session cookie. The Fastify server
+serves the built web app itself and binds `127.0.0.1:3001` so nothing
+bypasses the proxy.
 
 Layout on the VPS (`/home/ubuntu/stravaboard`): `server/` (bundled dist +
 migrations), `web/` (built SPA), `data/stravaboard.sqlite`, `.env`,

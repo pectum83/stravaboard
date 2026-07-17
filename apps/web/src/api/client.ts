@@ -35,6 +35,7 @@ export interface ActivityListParams {
 
 export const api = {
   authStatus: () => request<AuthStatus>('/api/auth/status'),
+  logout: () => request<{ loggedOut: boolean }>('/api/auth/logout', { method: 'POST' }),
   activities: (params: ActivityListParams = {}) => {
     const q = new URLSearchParams()
     if (params.limit) q.set('limit', String(params.limit))

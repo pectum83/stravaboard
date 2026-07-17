@@ -69,6 +69,7 @@ function resumeTime(iso: string): string {
       </span>
       <span v-else class="state">Up to date</span>
     </template>
+    <span class="grow" />
     <button
       type="button"
       :disabled="starting || status?.state === 'syncing' || status?.state === 'waiting_rate_limit'"
@@ -76,6 +77,8 @@ function resumeTime(iso: string): string {
     >
       Sync now
     </button>
+    <!-- Right side: the logged-in user chip (provided by the page). -->
+    <slot />
   </div>
 </template>
 
@@ -83,12 +86,15 @@ function resumeTime(iso: string): string {
 .sync-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 8px 14px;
   border-bottom: 1px solid #e1e0d9;
   background: #fcfcfb;
   font-size: 0.85rem;
+}
+
+.grow {
+  flex: 1;
 }
 
 .state {

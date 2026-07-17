@@ -1,22 +1,43 @@
 # Data model, API, sync
 
+## Multi-user model (family)
+
+Every family member logs in with their own Strava account. Identity = Strava
+OAuth; a **signed session cookie** (`session`, `@fastify/cookie`, secret
+`COOKIE_SECRET`, ~180 d) holds the athlete id. `src/auth/session.ts`
+registers an onRequest guard: every `/api/*` route except `/api/auth/*` and
+`/api/health` 401s without a valid cookie and sets `req.athleteId`.
+`ALLOWED_ATHLETE_IDS` (comma-separated, empty = anyone) gates the OAuth
+callback: denied athletes are redirected to `/?denied=<id>` with nothing
+persisted. All data is partitioned by athlete id; routes must never serve
+another athlete's rows (ownership check on `/:id/streams` and `/:id/refresh`
+returns 404, not 403).
+
 ## SQLite schema — `apps/server/src/db/schema.ts`
 
 Migrations in `apps/server/src/db/migrations/` (generate with
 `pnpm --filter @stravaboard/server exec drizzle-kit generate --name <slug>`;
 applied automatically by `openDb`).
 
-- `oauth_tokens` (single row id=1): athleteId, accessToken, refreshToken, expiresAt (epoch s).
-- `activities`: id (Strava id, PK), name, sportType, startDate (ISO),
+- `athletes`: id (Strava athlete id, PK), displayName (refreshed at each
+  login), createdAt.
+- `oauth_tokens` (one row PER athlete, PK athlete_id): accessToken,
+  refreshToken, expiresAt (epoch s).
+- `activities`: id (Strava id, PK — globally unique), **athlete_id** (owner,
+  indexed with start_date_epoch), name, sportType, startDate (ISO),
   startDateEpoch, distanceM, movingTimeS, elapsedTimeS, totalElevationGainM,
   streamsStatus `'pending'|'done'|'none'`, rawSummary (full Strava JSON kept verbatim).
 - `activity_streams`: activityId (PK, FK), time / distance (JSON number[] text),
   altitude (JSON or NULL), **latlng** (JSON `[lat,lng][]`; **SQL NULL = not
   fetched yet → backfill set; `'[]'` = activity has no GPS, terminal**), fetchedAt.
-- `sync_state` (single row): lastActivityStartEpoch (checkpoint), status, error.
-- `settings`: key/value JSON — single key `'settings'`, merged over
+- `sync_state` (one row per athlete, PK athlete_id): lastActivityStartEpoch
+  (checkpoint), status, error.
+- `settings`: key/value JSON — key `settings:<athleteId>`, merged over
   `DEFAULT_SETTINGS` on read (so new setting fields get defaults for free;
   stored values are never rewritten).
+- Migration `0002_multi_athlete.sql` was HAND-WRITTEN (data-preserving table
+  rebuilds + backfill of the single v2 athlete); its snapshot/journal were
+  hand-edited too — drizzle-kit generate needs a TTY for rename prompts.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 
@@ -33,9 +54,13 @@ applied automatically by `openDb`).
 
 ## HTTP API (all under `/api`, routes in `apps/server/src/routes/`)
 
-- `GET /health` → `{status:'ok'}` (app.ts)
-- `GET /auth/status`; `GET /auth/strava/login` → redirect;
-  `GET /auth/strava/callback` → token exchange, starts sync, redirects.
+- `GET /health` → `{status:'ok'}` (app.ts) — the only always-public data route.
+- `GET /auth/status` → `{connected, athleteId?, name?}` from the session;
+  `GET /auth/strava/login` → redirect; `GET /auth/strava/callback` → code
+  exchange (exchangeCode does NOT persist; the callback checks the allowlist,
+  then saves tokens + athlete and sets the cookie), starts sync, redirects;
+  `POST /auth/logout` clears the cookie. All other routes below require the
+  session and are scoped to `req.athleteId`.
 - `GET /config` → `{maptilerKey: string|null}` (config.ts; null when unset).
 - `GET/PUT /settings` — zod: instantWindowS 1–600, shortWindowS 1–3600,
   longWindowS 1–7200, ascentMinGainM 1–1000, ascentDescentToleranceM 0–500,
@@ -63,11 +88,13 @@ applied automatically by `openDb`).
   (`key_by_type=true`). Add new stream kinds here + `strava/types.ts`
   (`StravaStreamSet`) + `toStoredStreams()` in syncService + schema/migration +
   streams.repo + shared `ActivityStreams`.
-- `StravaClient.getActivity(id)` fetches one detailed activity (superset of
-  summary fields). `SyncService.refreshActivity(id)` implements the on-demand
-  single-activity refresh (summary upsert preserving streamsStatus, streams
-  replace, NotFound/RateLimit propagate to the route).
-- `SyncService.run()` = three passes, each wrapped in `retryingOnRateLimit`
+- `StravaClient` methods all take `athleteId` first (token refresh is
+  per-athlete via `ensureFreshToken(config, db, athleteId, …)`); the
+  RateLimiter stays shared — Strava limits are per application.
+  `SyncService.refreshActivity(id)` derives the athlete from the stored row.
+- `SyncService.run()` iterates `listConnectedAthleteIds` sequentially; one
+  athlete's failure records its error state and continues with the next.
+  Per athlete: three passes, each wrapped in `retryingOnRateLimit`
   (sleeps through 429/limit windows; transient `TypeError: fetch failed`
   retried with backoff, budget reset on progress via `progressMarker()`):
   1. `fetchNewSummaries` — pages `?after=checkpoint-1`, upserts summaries as

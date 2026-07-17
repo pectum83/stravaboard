@@ -1,9 +1,13 @@
 import { expect, test } from '@playwright/test'
+import { login } from './login.js'
 import { stubMapTiles } from './mapStub.js'
 
-test('dashboard flow: list, chart, settings persistence, empty state', async ({ page }) => {
+test('dashboard flow: login, list, chart, settings persistence, logout', async ({ page }) => {
   await stubMapTiles(page)
-  await page.goto('/')
+  await login(page)
+
+  // Logged in as the seeded athlete
+  await expect(page.getByText('E2E Tester')).toBeVisible()
 
   // Activity list shows the three seeded activities, newest first
   const items = page.locator('button.item')
@@ -40,10 +44,22 @@ test('dashboard flow: list, chart, settings persistence, empty state', async ({ 
 
   // Sync bar settles (stub returns an empty feed)
   await expect(page.getByText(/Up to date|Syncing/)).toBeVisible()
+
+  // Logging out lands back on the sign-in page
+  await page.getByRole('button', { name: 'Log out' }).click()
+  await expect(page.getByRole('link', { name: 'Connect with Strava' })).toBeVisible()
 })
 
-test('sync status endpoint reports idle against the stub', async ({ request }) => {
-  const status = await request.get('/api/sync/status')
+test('API refuses unauthenticated requests', async ({ request }) => {
+  for (const url of ['/api/sync/status', '/api/activities', '/api/settings', '/api/config']) {
+    expect((await request.get(url)).status(), url).toBe(401)
+  }
+})
+
+test('sync status endpoint reports idle for the logged-in athlete', async ({ page }) => {
+  await stubMapTiles(page)
+  await login(page)
+  const status = await page.request.get('/api/sync/status')
   expect(status.ok()).toBeTruthy()
   const body = (await status.json()) as { state: string }
   expect(['idle', 'syncing']).toContain(body.state)

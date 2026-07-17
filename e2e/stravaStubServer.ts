@@ -14,6 +14,11 @@ createServer((req, res) => {
 
   if (url.pathname === '/health') {
     res.end(JSON.stringify({ ok: true }))
+  } else if (url.pathname.endsWith('/oauth/authorize')) {
+    // Instant OAuth grant: bounce straight back to the app's callback.
+    res.statusCode = 302
+    res.setHeader('location', `${url.searchParams.get('redirect_uri')}?code=e2e-code`)
+    res.end()
   } else if (url.pathname.endsWith('/athlete/activities')) {
     res.end(JSON.stringify([]))
   } else if (url.pathname.endsWith('/token')) {
@@ -22,7 +27,7 @@ createServer((req, res) => {
         access_token: 'stub-access',
         refresh_token: 'stub-refresh',
         expires_at: Math.floor(Date.now() / 1000) + 21600,
-        athlete: { id: 4242 },
+        athlete: { id: 4242, firstname: 'E2E', lastname: 'Tester' },
       }),
     )
   } else {

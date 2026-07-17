@@ -24,6 +24,7 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         PORT: String(APP_PORT),
+        APP_BASE_URL: `http://localhost:${APP_PORT}`,
         DATABASE_PATH: DB_PATH,
         WEB_DIST_PATH: WEB_DIST,
         WEB_APP_URL: '/',
@@ -34,6 +35,9 @@ export default defineConfig({
         // Exercises the keyed map path; all MapTiler traffic is route-stubbed
         // in the specs, so no real request ever leaves the machine.
         MAPTILER_KEY: 'e2e-key',
+        // Exercises the allowlist accept path for the stub athlete.
+        ALLOWED_ATHLETE_IDS: '4242',
+        COOKIE_SECRET: 'e2e-cookie-secret',
       },
     },
   ],

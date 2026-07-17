@@ -71,6 +71,8 @@ export interface SyncStatus {
 export interface AuthStatus {
   connected: boolean
   athleteId?: number
+  /** Display name of the logged-in athlete. */
+  name?: string
 }
 
 export interface ActivitiesPage {

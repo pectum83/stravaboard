@@ -1,4 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+import fastifyCookie from '@fastify/cookie'
+import { registerAuthGuard } from './auth/session.js'
 import type { Config } from './config.js'
 import type { Db } from './db/client.js'
 import { registerActivityRoutes } from './routes/activities.js'
@@ -36,6 +38,9 @@ export async function buildApp({
     log: (msg) => app.log.info(msg),
     ...syncOptions,
   })
+
+  await app.register(fastifyCookie, { secret: config.COOKIE_SECRET })
+  registerAuthGuard(app)
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 

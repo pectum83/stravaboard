@@ -5,6 +5,8 @@ import { activities, activityStreams } from '../db/schema.js'
 
 export interface ActivityRow {
   id: number
+  /** Owner (Strava athlete id). */
+  athleteId: number
   name: string
   sportType: string
   startDate: string
@@ -51,12 +53,14 @@ export interface ActivityFilter {
 export function listActivities(
   db: Db,
   {
+    athleteId,
     limit,
     beforeEpoch,
     filter = {},
-  }: { limit: number; beforeEpoch?: number; filter?: ActivityFilter },
+  }: { athleteId: number; limit: number; beforeEpoch?: number; filter?: ActivityFilter },
 ): ActivityRow[] {
   const conditions = [
+    eq(activities.athleteId, athleteId),
     beforeEpoch === undefined ? undefined : lt(activities.startDateEpoch, beforeEpoch),
     filter.q === undefined
       ? undefined
@@ -81,11 +85,12 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`)
 }
 
-/** Distinct sport types present in the database, sorted. */
-export function listSportTypes(db: Db): string[] {
+/** Distinct sport types of one athlete's activities, sorted. */
+export function listSportTypes(db: Db, athleteId: number): string[] {
   return db
     .selectDistinct({ sportType: activities.sportType })
     .from(activities)
+    .where(eq(activities.athleteId, athleteId))
     .orderBy(asc(activities.sportType))
     .all()
     .map((r) => r.sportType)
@@ -100,21 +105,21 @@ export function setStreamsStatus(db: Db, id: number, status: StreamsStatus): voi
 }
 
 /** Activities still waiting for streams, oldest first (sync processes in start order). */
-export function listPendingStreams(db: Db, limit: number): ActivityRow[] {
+export function listPendingStreams(db: Db, athleteId: number, limit: number): ActivityRow[] {
   return db
     .select()
     .from(activities)
-    .where(eq(activities.streamsStatus, 'pending'))
+    .where(and(eq(activities.athleteId, athleteId), eq(activities.streamsStatus, 'pending')))
     .orderBy(asc(activities.startDateEpoch))
     .limit(limit)
     .all()
 }
 
-export function countPendingStreams(db: Db): number {
+export function countPendingStreams(db: Db, athleteId: number): number {
   const row = db
     .select({ n: count() })
     .from(activities)
-    .where(eq(activities.streamsStatus, 'pending'))
+    .where(and(eq(activities.athleteId, athleteId), eq(activities.streamsStatus, 'pending')))
     .get()
   return row?.n ?? 0
 }
@@ -123,10 +128,11 @@ export function countPendingStreams(db: Db): number {
  * Activities whose stored streams predate the latlng column (SQL NULL, as
  * opposed to '[]' = "no GPS"), oldest first — the one-time backfill set.
  */
-export function listStreamsMissingLatlng(db: Db, limit: number): ActivityRow[] {
+export function listStreamsMissingLatlng(db: Db, athleteId: number, limit: number): ActivityRow[] {
   return db
     .select({
       id: activities.id,
+      athleteId: activities.athleteId,
       name: activities.name,
       sportType: activities.sportType,
       startDate: activities.startDate,
@@ -140,18 +146,30 @@ export function listStreamsMissingLatlng(db: Db, limit: number): ActivityRow[] {
     })
     .from(activities)
     .innerJoin(activityStreams, eq(activityStreams.activityId, activities.id))
-    .where(and(eq(activities.streamsStatus, 'done'), isNull(activityStreams.latlng)))
+    .where(
+      and(
+        eq(activities.athleteId, athleteId),
+        eq(activities.streamsStatus, 'done'),
+        isNull(activityStreams.latlng),
+      ),
+    )
     .orderBy(asc(activities.startDateEpoch))
     .limit(limit)
     .all()
 }
 
-export function countStreamsMissingLatlng(db: Db): number {
+export function countStreamsMissingLatlng(db: Db, athleteId: number): number {
   const row = db
     .select({ n: count() })
     .from(activities)
     .innerJoin(activityStreams, eq(activityStreams.activityId, activities.id))
-    .where(and(eq(activities.streamsStatus, 'done'), isNull(activityStreams.latlng)))
+    .where(
+      and(
+        eq(activities.athleteId, athleteId),
+        eq(activities.streamsStatus, 'done'),
+        isNull(activityStreams.latlng),
+      ),
+    )
     .get()
   return row?.n ?? 0
 }

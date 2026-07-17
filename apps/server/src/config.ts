@@ -14,6 +14,10 @@ const envSchema = z.object({
   WEB_DIST_PATH: z.string().default(''),
   /** MapTiler API key for map layers; empty disables satellite/3D (OSM fallback). */
   MAPTILER_KEY: z.string().default(''),
+  /** Signs the session cookie. MUST be set to a long random value in production. */
+  COOKIE_SECRET: z.string().default('dev-secret-do-not-use-in-production'),
+  /** Comma-separated Strava athlete ids allowed to connect; empty = anyone. */
+  ALLOWED_ATHLETE_IDS: z.string().default(''),
   /** Where the OAuth callback sends the browser back to ('/' when the server serves the app). */
   WEB_APP_URL: z.string().default('/'),
 })
@@ -26,4 +30,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid environment: ${parsed.error.message}`)
   }
   return parsed.data
+}
+
+/** Parsed ALLOWED_ATHLETE_IDS; empty array = no restriction. */
+export function allowedAthleteIds(config: Config): number[] {
+  return config.ALLOWED_ATHLETE_IDS.split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0)
 }

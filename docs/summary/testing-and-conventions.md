@@ -6,16 +6,24 @@
   fixtures + exact ground truths (`fixtures.ts`; see algorithms.md). Coverage
   threshold **≥ 90 %** (currently 100 %).
 - `apps/server/src/__tests__/` — Vitest; API tests via Fastify `app.inject`
-  (no supertest), `:memory:` sqlite (`helpers.ts: testDb/testConfig/testApp`),
-  Strava doubled by `stravaStub.ts` (in-memory fetch impl: activities,
-  streams incl. latlng, 404s, 429s). Coverage **≥ 80 %**.
+  (no supertest), `:memory:` sqlite (`helpers.ts: testDb/testConfig/testApp`,
+  plus `session(app, athleteId)` for signed cookies and
+  `connectAthlete(db, id)` for a registered athlete with tokens), Strava
+  doubled by `stravaStub.ts` (in-memory fetch impl: activities, streams incl.
+  latlng, 404s, 429s, configurable token athlete). Coverage **≥ 80 %**.
+  Authenticated endpoints need `cookies: session(app, id)`; isolation tests
+  assert athlete A can never read athlete B's data.
 - `apps/web/src/__tests__/` — Vitest + @vue/test-utils + happy-dom.
   Debounces tested with `vi.useFakeTimers()`. MapLibre mocked with
   `vi.hoisted` + `vi.mock('maplibre-gl')` (see `MapPanel.test.ts`).
 - `e2e/*.spec.ts` — Playwright: boots the Strava stub + the real server on a
-  freshly seeded DB (`seed.ts`: mountain run with 90 s mid-climb pause +
-  latlng, flat run, streamless VirtualRide), serving the **built** web app
-  (`pnpm build` first!). Config sets `MAPTILER_KEY: 'e2e-key'`.
+  freshly seeded DB (`seed.ts`: athlete 4242 with mountain run incl. 90 s
+  mid-climb pause + latlng, flat run, streamless VirtualRide), serving the
+  **built** web app (`pnpm build` first!). Config sets `MAPTILER_KEY`,
+  `ALLOWED_ATHLETE_IDS: '4242'`, `COOKIE_SECRET` and `APP_BASE_URL` (the
+  OAuth redirect needs the e2e port). Every spec starts with
+  `login(page)` (`e2e/login.ts`) — the stub's /oauth/authorize bounces
+  straight back to the callback, which sets the session cookie.
 
 ## Hard rules
 

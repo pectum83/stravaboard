@@ -45,23 +45,26 @@ describe('buildAuthorizeUrl', () => {
 })
 
 describe('exchangeCode', () => {
-  it('exchanges the code and persists tokens with the athlete id', async () => {
+  it('exchanges the code and returns tokens WITHOUT persisting them', async () => {
     const db = testDb()
     const { fetch: f, calls } = fetchStub(() => ({
       access_token: 'at',
       refresh_token: 'rt',
       expires_at: 9999,
-      athlete: { id: 42 },
+      athlete: { id: 42, firstname: 'Léa', lastname: 'R.' },
     }))
-    await exchangeCode(config, db, 'the-code', f)
+    const { tokens, athleteName } = await exchangeCode(config, db, 'the-code', f)
     expect(calls[0]?.get('grant_type')).toBe('authorization_code')
     expect(calls[0]?.get('code')).toBe('the-code')
-    expect(getTokens(db)).toEqual({
+    expect(tokens).toEqual({
       athleteId: 42,
       accessToken: 'at',
       refreshToken: 'rt',
       expiresAt: 9999,
     })
+    expect(athleteName).toBe('Léa R.')
+    // Persistence is the caller's decision (allowlist gate).
+    expect(getTokens(db, 42)).toBeNull()
   })
 
   it('throws on a non-OK token response', async () => {
@@ -73,16 +76,16 @@ describe('exchangeCode', () => {
 })
 
 describe('ensureFreshToken', () => {
-  it('throws NotConnectedError when no tokens are stored', async () => {
+  it('throws NotConnectedError when the athlete has no tokens', async () => {
     const { fetch: f } = fetchStub(() => ({}))
-    await expect(ensureFreshToken(config, testDb(), f)).rejects.toThrow(NotConnectedError)
+    await expect(ensureFreshToken(config, testDb(), 1, f)).rejects.toThrow(NotConnectedError)
   })
 
   it('returns the stored token untouched while still valid', async () => {
     const db = testDb()
     saveTokens(db, { athleteId: 1, accessToken: 'valid', refreshToken: 'r0', expiresAt: 2000 })
     const { fetch: f, calls } = fetchStub(() => ({}))
-    const token = await ensureFreshToken(config, db, f, () => 1000)
+    const token = await ensureFreshToken(config, db, 1, f, () => 1000)
     expect(token).toBe('valid')
     expect(calls).toHaveLength(0)
   })
@@ -95,29 +98,40 @@ describe('ensureFreshToken', () => {
       refresh_token: 'r1-rotated',
       expires_at: 9000,
     }))
-    const token = await ensureFreshToken(config, db, f, () => 1000)
+    const token = await ensureFreshToken(config, db, 1, f, () => 1000)
     expect(token).toBe('new')
     expect(calls[0]?.get('grant_type')).toBe('refresh_token')
     expect(calls[0]?.get('refresh_token')).toBe('r0')
     // The rotated refresh token MUST be stored — Strava revokes the old one.
-    expect(getTokens(db)).toEqual({
+    expect(getTokens(db, 1)).toEqual({
       athleteId: 1,
       accessToken: 'new',
       refreshToken: 'r1-rotated',
       expiresAt: 9000,
     })
   })
+
+  it("keeps each athlete's tokens separate", async () => {
+    const db = testDb()
+    saveTokens(db, { athleteId: 1, accessToken: 'a1', refreshToken: 'r1', expiresAt: 9000 })
+    saveTokens(db, { athleteId: 2, accessToken: 'a2', refreshToken: 'r2', expiresAt: 9000 })
+    const { fetch: f } = fetchStub(() => ({}))
+    expect(await ensureFreshToken(config, db, 1, f, () => 1000)).toBe('a1')
+    expect(await ensureFreshToken(config, db, 2, f, () => 1000)).toBe('a2')
+  })
 })
 
 describe('auth routes', () => {
-  it('reports disconnected then connected status around the callback', async () => {
+  const tokenResponse = (athleteId: number, name?: string) => ({
+    access_token: 'at',
+    refresh_token: 'rt',
+    expires_at: 9999,
+    athlete: { id: athleteId, firstname: name },
+  })
+
+  it('logs in via the callback: session cookie, athlete account, status with name', async () => {
     const db = testDb()
-    const { fetch: f } = fetchStub(() => ({
-      access_token: 'at',
-      refresh_token: 'rt',
-      expires_at: 9999,
-      athlete: { id: 7 },
-    }))
+    const { fetch: f } = fetchStub(() => tokenResponse(7, 'Chris'))
     const { app } = await testApp({}, db, f)
 
     const before = await app.inject({ method: 'GET', url: '/api/auth/status' })
@@ -125,9 +139,63 @@ describe('auth routes', () => {
 
     const cb = await app.inject({ method: 'GET', url: '/api/auth/strava/callback?code=xyz' })
     expect(cb.statusCode).toBe(302)
+    const cookie = cb.cookies.find((c) => c.name === 'session')
+    expect(cookie).toBeDefined()
+    expect(getTokens(db, 7)).not.toBeNull()
 
-    const after = await app.inject({ method: 'GET', url: '/api/auth/status' })
-    expect(after.json()).toEqual({ connected: true, athleteId: 7 })
+    const after = await app.inject({
+      method: 'GET',
+      url: '/api/auth/status',
+      cookies: { session: cookie!.value },
+    })
+    expect(after.json()).toEqual({ connected: true, athleteId: 7, name: 'Chris' })
+  })
+
+  it('denies athletes outside the allowlist without storing anything', async () => {
+    const db = testDb()
+    const { fetch: f } = fetchStub(() => tokenResponse(999, 'Stranger'))
+    const { app } = await testApp({ ALLOWED_ATHLETE_IDS: '7, 8' }, db, f)
+
+    const cb = await app.inject({ method: 'GET', url: '/api/auth/strava/callback?code=xyz' })
+    expect(cb.statusCode).toBe(302)
+    expect(cb.headers.location).toContain('denied=999')
+    expect(cb.cookies.find((c) => c.name === 'session')).toBeUndefined()
+    expect(getTokens(db, 999)).toBeNull()
+  })
+
+  it('accepts allowlisted athletes', async () => {
+    const db = testDb()
+    const { fetch: f } = fetchStub(() => tokenResponse(8))
+    const { app } = await testApp({ ALLOWED_ATHLETE_IDS: '7,8' }, db, f)
+    const cb = await app.inject({ method: 'GET', url: '/api/auth/strava/callback?code=xyz' })
+    expect(cb.cookies.find((c) => c.name === 'session')).toBeDefined()
+  })
+
+  it('logout clears the session', async () => {
+    const db = testDb()
+    const { fetch: f } = fetchStub(() => tokenResponse(7))
+    const { app } = await testApp({}, db, f)
+    const cb = await app.inject({ method: 'GET', url: '/api/auth/strava/callback?code=xyz' })
+    const cookie = cb.cookies.find((c) => c.name === 'session')!
+
+    const out = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      cookies: { session: cookie.value },
+    })
+    expect(out.statusCode).toBe(200)
+    const cleared = out.cookies.find((c) => c.name === 'session')
+    expect(cleared?.value).toBe('')
+  })
+
+  it('rejects a forged (unsigned) session cookie', async () => {
+    const { app } = await testApp()
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/activities',
+      cookies: { session: '7' }, // no valid signature
+    })
+    expect(res.statusCode).toBe(401)
   })
 
   it('login redirects to the Strava authorize URL', async () => {

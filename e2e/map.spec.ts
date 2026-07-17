@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
+import { login } from './login.js'
 import { stubMapTiles } from './mapStub.js'
 
 test('map panel shows the trace with layer options and follows the chart cursor', async ({
   page,
 }) => {
   await stubMapTiles(page)
-  await page.goto('/')
+  await login(page)
 
   await page.locator('button.item', { hasText: 'Morning Mountain Run' }).click()
   const mapArea = page.locator('.map-area')

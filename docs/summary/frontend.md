@@ -30,6 +30,13 @@ controls wrap) and the chart renders in compact mode (see buildChartOptions).
 - Store `refreshActivity(id)` calls the refresh endpoint and replaces the
   summary in place (throws on failure — callers surface the error).
 
+## Auth UX
+
+Sign-in page = the app itself when `authStatus` says disconnected ("Connect
+with Strava" link → OAuth). `?denied=<athleteId>` after a refused login shows
+the id so the admin can extend the allowlist. When connected, the sync bar's
+slot shows the athlete name + "Log out" (POST logout then hard reload).
+
 ## DashboardPage
 
 Layout: `SyncStatusBar` on top; aside 320 px = `ActivityFilters` +

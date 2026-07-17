@@ -33,6 +33,7 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     }
     const { limit, before, q, from, to, sportType } = parsed.data
     const rows = listActivities(db, {
+      athleteId: req.athleteId,
       limit,
       beforeEpoch: before,
       filter: {
@@ -52,13 +53,16 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     return page
   })
 
-  app.get('/api/activities/sport-types', async () => listSportTypes(db))
+  app.get('/api/activities/sport-types', async (req) => listSportTypes(db, req.athleteId))
 
   // Re-fetch one activity from Strava (after it was edited/cropped there).
   app.post('/api/activities/:id/refresh', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'invalid id' })
-    if (!getActivity(db, id)) return reply.code(404).send({ error: 'unknown activity' })
+    const owned = getActivity(db, id)
+    if (!owned || owned.athleteId !== req.athleteId) {
+      return reply.code(404).send({ error: 'unknown activity' })
+    }
     try {
       return toSummary(await sync.refreshActivity(id))
     } catch (err) {
@@ -79,7 +83,9 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'invalid id' })
     const activity = getActivity(db, id)
-    if (!activity) return reply.code(404).send({ error: 'unknown activity' })
+    if (!activity || activity.athleteId !== req.athleteId) {
+      return reply.code(404).send({ error: 'unknown activity' })
+    }
     const streams = getStreams(db, id)
     if (!streams) {
       return reply.code(404).send({ error: 'no streams', streamsStatus: activity.streamsStatus })

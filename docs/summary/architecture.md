@@ -18,9 +18,11 @@ e2e               Playwright suite: real server + seeded sqlite + local Strava s
   `source ~/.nvm/nvm.sh && nvm use` before any pnpm command.
 - Root `.env` (loaded by the server entry point `apps/server/src/index.ts`);
   template `.env.example`. Keys: `STRAVA_CLIENT_ID/SECRET`, `PORT` (3001),
-  `DATABASE_PATH`, `APP_BASE_URL`, `WEB_APP_URL`, `WEB_DIST_PATH`,
+  `HOST`, `DATABASE_PATH`, `APP_BASE_URL`, `WEB_APP_URL`, `WEB_DIST_PATH`,
   `STRAVA_API_BASE/OAUTH_BASE` (overridden in tests), `MAPTILER_KEY`
-  (optional; empty → map falls back to plain OSM, no satellite/3D).
+  (optional; empty → map falls back to plain OSM, no satellite/3D),
+  `COOKIE_SECRET` (session signing), `ALLOWED_ATHLETE_IDS` (family
+  allowlist, comma-separated; empty = anyone).
 - Config parsing: `apps/server/src/config.ts` (zod schema, defaults).
 
 ## Commands (from repo root)

@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { login } from './login.js'
 import { stubMapTiles } from './mapStub.js'
 
 test.beforeEach(async ({ page }) => {
   await stubMapTiles(page)
-  await page.goto('/')
+  await login(page)
   await expect(page.locator('button.item')).toHaveCount(3)
 })
 

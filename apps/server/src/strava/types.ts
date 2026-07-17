@@ -4,7 +4,7 @@ export interface StravaTokenResponse {
   refresh_token: string
   /** Unix epoch seconds. */
   expires_at: number
-  athlete?: { id: number }
+  athlete?: { id: number; firstname?: string; lastname?: string }
 }
 
 /** Subset of a Strava SummaryActivity. */

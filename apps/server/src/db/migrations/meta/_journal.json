@@ -15,6 +15,13 @@
       "when": 1784137309343,
       "tag": "0001_add_latlng",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784300000000,
+      "tag": "0002_multi_athlete",
+      "breakpoints": true
     }
   ]
 }

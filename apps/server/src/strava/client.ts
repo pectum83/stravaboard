@@ -42,33 +42,33 @@ export class StravaClient {
   }
 
   /** Activities strictly after `afterEpoch`, oldest first (Strava semantics of ?after). */
-  async listActivities(afterEpoch: number, page: number, perPage = 200) {
+  async listActivities(athleteId: number, afterEpoch: number, page: number, perPage = 200) {
     const params = new URLSearchParams({
       after: String(afterEpoch),
       page: String(page),
       per_page: String(perPage),
     })
-    return this.get<StravaSummaryActivity[]>(`/athlete/activities?${params}`)
+    return this.get<StravaSummaryActivity[]>(athleteId, `/athlete/activities?${params}`)
   }
 
   /** Detailed activity — a superset of the summary fields we store. */
-  async getActivity(activityId: number) {
-    return this.get<StravaSummaryActivity>(`/activities/${activityId}`)
+  async getActivity(athleteId: number, activityId: number) {
+    return this.get<StravaSummaryActivity>(athleteId, `/activities/${activityId}`)
   }
 
-  async getStreams(activityId: number) {
+  async getStreams(athleteId: number, activityId: number) {
     const params = new URLSearchParams({
       keys: 'time,distance,altitude,latlng',
       key_by_type: 'true',
     })
-    return this.get<StravaStreamSet>(`/activities/${activityId}/streams?${params}`)
+    return this.get<StravaStreamSet>(athleteId, `/activities/${activityId}/streams?${params}`)
   }
 
-  private async get<T>(path: string): Promise<T> {
+  private async get<T>(athleteId: number, path: string): Promise<T> {
     const wait = this.rateLimiter.waitUntil(this.nowMs())
     if (wait !== null) throw new RateLimitError(wait)
 
-    const token = await ensureFreshToken(this.config, this.db, this.fetchImpl, () =>
+    const token = await ensureFreshToken(this.config, this.db, athleteId, this.fetchImpl, () =>
       Math.floor(this.nowMs() / 1000),
     )
     const res = await this.fetchImpl(`${this.config.STRAVA_API_BASE}${path}`, {

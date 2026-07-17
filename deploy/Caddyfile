@@ -1,11 +1,8 @@
-# Installed to /etc/caddy/Caddyfile by setup-vps.sh, which replaces the
-# placeholder hash with a real bcrypt hash (caddy hash-password).
+# Installed to /etc/caddy/Caddyfile by setup-vps.sh.
+# No proxy-level auth: the app gates everything behind Strava login
+# (session cookie + ALLOWED_ATHLETE_IDS allowlist).
 strava.pectum.fr {
 	encode gzip
-
-	basic_auth {
-		cro __BCRYPT_HASH__
-	}
 
 	reverse_proxy 127.0.0.1:3001
 }

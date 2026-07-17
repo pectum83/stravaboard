@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { login } from './login.js'
 import { stubMapTiles } from './mapStub.js'
 
 test('mountain run shows chart with whole-activity ascent/descent means', async ({ page }) => {
   await stubMapTiles(page)
-  await page.goto('/')
+  await login(page)
 
   await page.locator('button.item', { hasText: 'Morning Mountain Run' }).click()
   await expect(page.locator('.chart canvas').first()).toBeVisible()

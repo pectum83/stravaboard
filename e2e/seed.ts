@@ -4,9 +4,13 @@
  */
 import { openDb } from '../apps/server/src/db/client.js'
 import { upsertActivity } from '../apps/server/src/repositories/activities.repo.js'
+import { upsertAthlete } from '../apps/server/src/repositories/athletes.repo.js'
 import { saveStreams } from '../apps/server/src/repositories/streams.repo.js'
 import { saveTokens } from '../apps/server/src/repositories/tokens.repo.js'
 import { saveSyncState } from '../apps/server/src/repositories/syncState.repo.js'
+
+/** The athlete the Strava stub logs in as. */
+export const E2E_ATHLETE_ID = 4242
 
 interface Profile {
   time: number[]
@@ -74,8 +78,9 @@ function flatProfile(): Profile {
 export function seed(dbPath: string): void {
   const db = openDb(dbPath)
 
+  upsertAthlete(db, E2E_ATHLETE_ID, 'E2E Tester', new Date().toISOString())
   saveTokens(db, {
-    athleteId: 4242,
+    athleteId: E2E_ATHLETE_ID,
     accessToken: 'e2e-access',
     refreshToken: 'e2e-refresh',
     expiresAt: Math.floor(Date.now() / 1000) + 86_400 * 365,
@@ -113,6 +118,7 @@ export function seed(dbPath: string): void {
     const lastTime = f.profile?.time.at(-1) ?? 3600
     upsertActivity(db, {
       id: f.id,
+      athleteId: E2E_ATHLETE_ID,
       name: f.name,
       sportType: f.sportType,
       startDate: f.startDate,
@@ -129,7 +135,7 @@ export function seed(dbPath: string): void {
     }
   }
 
-  saveSyncState(db, {
+  saveSyncState(db, E2E_ATHLETE_ID, {
     lastActivityStartEpoch: Math.floor(Date.parse('2026-06-20T07:30:00Z') / 1000),
     status: 'idle',
   })

@@ -14,14 +14,14 @@ const settingsSchema = z.object({
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
-  app.get('/api/settings', async () => getSettings(db))
+  app.get('/api/settings', async (req) => getSettings(db, req.athleteId))
 
   app.put('/api/settings', async (req, reply) => {
     const parsed = settingsSchema.safeParse(req.body)
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid settings', details: parsed.error.issues })
     }
-    saveSettings(db, parsed.data)
+    saveSettings(db, req.athleteId, parsed.data)
     return parsed.data
   })
 }

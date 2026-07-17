@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { login } from './login.js'
 import { stubMapTiles } from './mapStub.js'
 
 // iPhone 15 dimensions (Playwright's descriptor, minus its webkit default —
@@ -12,7 +13,7 @@ test.use({
 
 test('phone layout stacks list, chart and map without horizontal overflow', async ({ page }) => {
   await stubMapTiles(page)
-  await page.goto('/')
+  await login(page)
 
   // List spans the full width and stays usable
   const items = page.locator('button.item')
