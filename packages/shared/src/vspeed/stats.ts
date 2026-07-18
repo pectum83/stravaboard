@@ -1,6 +1,6 @@
 import { detectAscents, detectDescents, type Ascent } from './ascents.js'
 import { detectPauses } from './pauses.js'
-import { despike } from './smoothing.js'
+import { despike, flattenNoiseBursts } from './smoothing.js'
 import type { ActivityStreams, Settings } from '../types.js'
 
 /** Whole-activity aggregate over ascent (or descent) segments. */
@@ -103,15 +103,17 @@ export interface ActivityMetrics {
   gainM: number
   /**
    * Total descent (m, positive) over every detected descent — deliberately NOT
-   * speed-capped, so a fast alpine-ski descent counts in full (despiking + the
-   * min-gain hysteresis already reject GPS noise). 0 when no descent qualifies.
+   * speed-capped, so a fast alpine-ski descent counts in full (despiking,
+   * noise-burst flattening + the min-gain hysteresis already reject sensor
+   * noise). 0 when no descent qualifies.
    */
   descentLossM: number
 }
 
 /**
  * The stored per-activity metrics with the given segment `params` (default
- * `STANDARD_METRIC_PARAMS`). Despikes GPS altitude spikes, then: for the ascent
+ * `STANDARD_METRIC_PARAMS`). Despikes GPS altitude spikes and flattens
+ * sustained noise bursts (submerged-watch garbage), then: for the ascent
  * metrics detects ascents and drops lift/artefact-fast segments (above
  * `params.maxAscentVSpeed`) before aggregating; for the descent total sums every
  * detected descent (no lift cap — see `descentLossM`). Returns `null` when the
@@ -133,7 +135,10 @@ export function activityMetrics(
   ) {
     return null
   }
-  const altitude = despike(rawAltitude)
+  // Despike first (isolated GPS spikes), then flatten sustained noise bursts
+  // (submerged-watch garbage — a swim mid-hike) so a spike can't feed the
+  // burst detector's both-ways sums.
+  const altitude = flattenNoiseBursts(streams.time, despike(rawAltitude))
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, altitude, {
     thresholdS: params.pauseThresholdS,
     radiusM: params.pauseRadiusM,

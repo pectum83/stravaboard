@@ -31,10 +31,11 @@ binary search. Distance-domain, so pauses/time gaps need no handling; `y=null`
 only when the window has zero horizontal span (fully stationary). Returns
 `VSpeedPoint[]` (x in km).
 
-## smoothing.ts — `medianFilter(values, size)` + `despike(values, opts)`
+## smoothing.ts — `medianFilter` + `despike` + `flattenNoiseBursts`
 
-`medianFilter`: centered odd-size median (window shrinks at edges; throws on
-even size). Used only for the instant series (width 5) to tame barometric jitter.
+`medianFilter(values, size)`: centered odd-size median (window shrinks at edges;
+throws on even size). Used only for the instant series (width 5) to tame
+barometric jitter.
 
 `despike(values, {windowSamples, madK, minDeviationM})` — robust **Hampel**
 filter: replace a sample deviating from its local median by more than
@@ -42,9 +43,30 @@ filter: replace a sample deviating from its local median by more than
 altitude spikes (bad fixes, reacquisition steps) without touching real climbs (a
 sustained rise carries the median with it); the `minDeviationM` floor stops
 smooth data (MAD≈0) from being over-corrected. Fixed `DESPIKE = {windowSamples:7,
-madK:4, minDeviationM:5}`. **Applied once at pipeline entry** in both
-`computeVSpeedModel` and `activityAscentMean`, so every derivation (series,
-slope, segments, stored metric) sees despiked altitude; the instant series then
+madK:4, minDeviationM:5}`.
+
+`flattenNoiseBursts(time, values, {windowS, minBothWaysM})` — sustained-noise
+flattener for **submerged-watch garbage** (a swim in the middle of a hike:
+altitude bounces ±hundreds of meters within seconds, which despike cannot fix —
+the local median is itself noise — and which used to add thousands of fake
+descent meters, since descents have no lift cap). Every sample covered by a
+sliding time window whose cumulative rises AND falls both reach `minBothWaysM`
+is flagged (real movement is one-way at this scale); each contiguous flagged
+region is replaced by the last clean altitude before it (first clean after, for
+a burst opening the stream; `values[0]` if everything is noise). A wet-sensor
+baseline offset thus surfaces as one abrupt step at region exit, which the
+ascent lift cap already rejects. Regions may overrun real data by ≤ `windowS`
+per side (bounded, only next to garbage). Fixed `NOISE_BURST = {windowS:60,
+minBothWaysM:50}` — 60 s (not more) so a ski run starting straight off a lift
+(real rise+fall inside one window) never trips it: validated against every
+alpine/backcountry-ski day in the production DB (zero change) and against the
+swim hikes (D− 2526→487 / 1790→1509, matching their real profiles).
+
+**Cleaning runs once at pipeline entry** in both `computeVSpeedModel` and
+`activityMetrics`/`activityAscentMean`: `flattenNoiseBursts(time,
+despike(raw))` — despike FIRST, so an isolated spike (which also moves both
+ways) is gone before the burst detector sums windows. Every derivation (series,
+slope, segments, stored metric) sees cleaned altitude; the instant series then
 median-filters on top.
 
 ## pauses.ts — position-based pause detection
@@ -152,11 +174,12 @@ athleteId, params)` over the athlete's done activities (local, no API), so the
 sort/badges/list figures follow their settings, and the sync path
 (`storeStreams`, `computeMissingMetrics`) computes with current settings too so a
 later sync never reverts them. **Changing this algorithm (or pause detection —
-pauses feed the mean) requires recomputing stored values** — migrations
-`0004`–`0009` (data-and-api.md) NULL `ascent_mean_vspeed` so the next sync's local
+pauses feed the mean; or altitude cleaning — every metric reads cleaned
+altitude) requires recomputing stored values** — migrations `0004`–`0010`
+(data-and-api.md) NULL `ascent_mean_vspeed` so the next sync's local
 `computeMissingMetrics` refills ALL metric columns with no API calls
 (`listMissingMetrics` keys off the NULL speed column); `0009` covers the
-settings-aware metric.
+settings-aware metric, `0010` the noise-burst flattening.
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 
@@ -166,7 +189,9 @@ settings-aware metric.
 distance), `jitterLatlng(latlng, ampM)` (deterministic), `insertPause(streams,
 atIndex, durationS)` (freezes position/alt, shifts later times),
 `spike(streams, atIndex, deltaM)` (single-sample bad-GPS altitude spike, for
-despike tests). **Use a
+despike tests), `noiseBurst(streams, atIndex, durationS, ampM)` (±ampM
+square-wave oscillation around the entry altitude — submerged-watch garbage,
+for flattenNoiseBursts tests). **Use a
 horizontal speed of 6 m/s when you need exact pause boundaries** (one sample
 leaves the 5 m radius); at 1 m/s the anchor scan extends the pause a few
 samples on each side.

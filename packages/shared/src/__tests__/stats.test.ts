@@ -10,7 +10,7 @@ import {
   partitionSegments,
   STANDARD_METRIC_PARAMS,
 } from '../vspeed/stats.js'
-import { flat, insertPause, ramp, spike, withLatlng } from './fixtures.js'
+import { flat, insertPause, noiseBurst, ramp, spike, withLatlng } from './fixtures.js'
 
 function segment(gainM: number, effectiveTimeS: number): Ascent {
   return {
@@ -131,6 +131,29 @@ describe('activityMetrics (mean speed + lift-excluded gain + total descent)', ()
   it('measures a plain descent loss (positive metres)', () => {
     const stats = activityMetrics({ ...ramp(1000, 6, -0.2), latlng: null })
     expect(stats!.descentLossM).toBeCloseTo(200, 4)
+  })
+
+  it('flattens a swim noise burst so it cannot inflate the descent total', () => {
+    // Hike with a lake swim: climb 200 m at 720 m/h, rest at the lake while the
+    // submerged watch writes ±60 m garbage for 300 s, then descend 200 m. Each
+    // fake oscillation is a > minGain descent, so without flattening the burst
+    // alone would add thousands of meters to D−.
+    const time: number[] = []
+    const distance: number[] = []
+    const altitude: number[] = []
+    let alt = 100
+    for (let t = 0; t <= 2600; t++) {
+      time.push(t)
+      distance.push(t * 2)
+      if (t < 1000) alt += 0.2
+      else if (t >= 1600) alt -= 0.2
+      altitude.push(alt)
+    }
+    const swim = noiseBurst({ time, distance, altitude }, 1150, 300, 60)
+    const stats = activityMetrics({ ...swim, latlng: null })
+    expect(stats!.gainM).toBeCloseTo(200, 0)
+    expect(stats!.descentLossM).toBeCloseTo(200, 0)
+    expect(stats!.meanVSpeed).toBeCloseTo(720, 0)
   })
 
   it('is null without altitude', () => {

@@ -4,6 +4,7 @@ import {
   detectAscents,
   detectDescents,
   detectPauses,
+  flattenNoiseBursts,
   medianFilter,
   partitionSegments,
   windowedSlope,
@@ -72,10 +73,11 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
   if (distance.length !== time.length || rawAltitude.length !== time.length) {
     return emptyModel(streams)
   }
-  // Despike once at the entry so every derivation (series, slope, segments)
-  // sees GPS-artefact-free altitude; the instant series still median-filters
-  // on top to tame remaining barometric jitter.
-  const altitude = despike(rawAltitude)
+  // Clean once at the entry so every derivation (series, slope, segments) sees
+  // artefact-free altitude: despike isolated GPS spikes, then flatten sustained
+  // noise bursts (submerged-watch garbage — a swim mid-hike). The instant
+  // series still median-filters on top to tame remaining barometric jitter.
+  const altitude = flattenNoiseBursts(time, despike(rawAltitude))
 
   const smoothed = medianFilter(altitude, INSTANT_SMOOTHING)
   const instant = windowedVerticalSpeed(time, distance, smoothed, {

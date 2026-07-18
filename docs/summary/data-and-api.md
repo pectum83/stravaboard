@@ -86,6 +86,11 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   the stored metrics became **settings-aware** (computed from each athlete's
   segment settings, not fixed params). The next sync recomputes all three with the
   athlete's current settings. Same "sync after deploying" caveat.
+- Migration `0010_recompute_noise_flatten.sql` (NULL-reset only; snapshot =
+  0009's with a new id/prevId, schema unchanged) nulls `ascent_mean_vspeed` after
+  altitude cleaning gained **noise-burst flattening** (submerged-watch garbage —
+  a mid-hike swim used to add thousands of fake descent meters). Same "sync
+  after deploying" caveat.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 

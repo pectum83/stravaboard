@@ -18,7 +18,11 @@ distance:
   (configurable), dashed on its own right-side axis
 
 Bad GPS is filtered out: altitude **spikes are despiked** before any analysis
-(so a stray fix at the end of a track no longer invents a climb), and
+(so a stray fix at the end of a track no longer invents a climb), sustained
+**noise bursts are flattened** — the garbage a submerged watch records during a
+mid-hike lake swim (readings bouncing hundreds of meters up AND down within a
+minute, which used to add thousands of fake descent meters) is replaced by the
+altitude where the burst started — and
 **fast climbs above a cap** — mechanical ski lifts (even slow resort ones,
 ~1450 m/h), or artefacts faster than any human ascent — are shown greyed on the
 chart and left out of the ascent mean, badges and sort (descents aren't capped,

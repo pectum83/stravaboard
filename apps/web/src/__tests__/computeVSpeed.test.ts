@@ -55,6 +55,20 @@ describe('computeVSpeedModel', () => {
     expect(model.excludedAscents).toHaveLength(0)
   })
 
+  it('flattens a submerged-watch noise burst (swim) so it forms no segments', () => {
+    const walk = climbAt(0)
+    // 200 s of ±60 m oscillation mid-stream: what a watch records during a
+    // lake swim. Each fake swing would otherwise be its own descent segment.
+    for (let k = 0; k < 200; k++) {
+      walk.altitude![200 + k] = 1000 + (k % 4 < 2 ? 60 : -60)
+    }
+    const model = computeVSpeedModel(walk, DEFAULT_SETTINGS)
+    expect(model.ascents).toHaveLength(0)
+    expect(model.excludedAscents).toHaveLength(0)
+    expect(model.descents).toHaveLength(0)
+    expect(model.descentStats.totalGainM).toBe(0)
+  })
+
   it('excludes detected pauses from ascent means and totals the paused time', () => {
     const model = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
     expect(model.pauses).toHaveLength(1)

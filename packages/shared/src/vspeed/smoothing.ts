@@ -69,3 +69,81 @@ export function despike(
   }
   return out
 }
+
+/**
+ * Fixed parameters for sustained-noise flattening (see `flattenNoiseBursts`).
+ * 60 s / 50 m: tight enough that a ski run starting right off a lift (real rise
+ * and fall inside one window) never trips it — verified against real alpine-ski
+ * days — while submerged-watch bursts oscillate far more both ways per minute.
+ */
+export const NOISE_BURST = { windowS: 60, minBothWaysM: 50 } as const
+
+export interface NoiseBurstOptions {
+  /** Sliding time window, seconds. */
+  windowS?: number
+  /** Cumulative rise AND fall (m) a window must reach to be flagged as noise. */
+  minBothWaysM?: number
+}
+
+/**
+ * Flatten sustained altitude-noise bursts — the garbage a GPS watch records
+ * while submerged (a swim in the middle of a hike): readings bounce tens to
+ * hundreds of meters BOTH ways within seconds. `despike` cannot fix those (the
+ * local median is itself noise) and no real activity produces them: climbing
+ * `minBothWaysM` within `windowS` is already superhuman, and doing so while
+ * ALSO descending as much is physically impossible — whereas a fast ski descent
+ * moves one way only. Every sample covered by a window of `windowS` seconds
+ * whose cumulative rises AND falls both reach `minBothWaysM` is flagged;
+ * contiguous flagged samples are replaced by the last clean altitude before
+ * them (by the first clean one after, for a burst opening the stream). A
+ * wet-sensor baseline offset thus surfaces as one abrupt step at the region
+ * exit, which the ascent lift/artefact cap already rejects. Run AFTER
+ * `despike`: an isolated spike also moves both ways, and despiking it first
+ * keeps it out of the window sums.
+ */
+export function flattenNoiseBursts(
+  time: readonly number[],
+  values: readonly number[],
+  {
+    windowS = NOISE_BURST.windowS,
+    minBothWaysM = NOISE_BURST.minBothWaysM,
+  }: NoiseBurstOptions = {},
+): number[] {
+  if (time.length !== values.length) {
+    throw new Error(`stream length mismatch: time ${time.length}, altitude ${values.length}`)
+  }
+  const n = values.length
+  const out = [...values]
+  if (n < 3) return out
+  // Prefix sums of the positive / negative altitude steps.
+  const rise = new Array<number>(n).fill(0)
+  const fall = new Array<number>(n).fill(0)
+  for (let i = 1; i < n; i++) {
+    const step = values[i]! - values[i - 1]!
+    rise[i] = rise[i - 1]! + Math.max(step, 0)
+    fall[i] = fall[i - 1]! + Math.max(-step, 0)
+  }
+  // Slide the window with two pointers and mark every sample a flagged window
+  // covers; `markedTo` keeps the total marking work linear.
+  const noisy = new Array<boolean>(n).fill(false)
+  let markedTo = -1
+  for (let i = 0, j = 0; i < n; i++) {
+    if (j < i) j = i
+    while (j + 1 < n && time[j + 1]! <= time[i]! + windowS) j++
+    if (Math.min(rise[j]! - rise[i]!, fall[j]! - fall[i]!) >= minBothWaysM) {
+      for (let k = Math.max(i, markedTo + 1); k <= j; k++) noisy[k] = true
+      markedTo = j
+    }
+  }
+  // Replace each noisy region with its entry altitude (its exit altitude when
+  // the stream starts noisy; the first sample when everything is noise).
+  for (let i = 0; i < n; i++) {
+    if (!noisy[i]) continue
+    let end = i
+    while (end + 1 < n && noisy[end + 1]) end++
+    const fill = i > 0 ? values[i - 1]! : end + 1 < n ? values[end + 1]! : values[0]!
+    for (let k = i; k <= end; k++) out[k] = fill
+    i = end
+  }
+  return out
+}

@@ -83,6 +83,26 @@ export function spike(streams: Streams, atIndex: number, deltaM: number): Stream
   return { ...streams, altitude }
 }
 
+/**
+ * Overwrite `durationS` samples from `atIndex` with a violent ±`ampM`
+ * oscillation around the entry altitude — the signature a submerged GPS watch
+ * records while its owner swims (readings bounce both ways within seconds).
+ * Deterministic square wave with a 4-sample period; time/distance untouched.
+ */
+export function noiseBurst(
+  streams: Streams,
+  atIndex: number,
+  durationS: number,
+  ampM: number,
+): Streams {
+  const altitude = [...streams.altitude]
+  const base = streams.altitude[atIndex]!
+  for (let k = 0; k < durationS && atIndex + k < altitude.length; k++) {
+    altitude[atIndex + k] = base + (k % 4 < 2 ? ampM : -ampM)
+  }
+  return { ...streams, altitude }
+}
+
 export interface StreamsWithLatlng extends Streams {
   latlng: [number, number][]
 }
