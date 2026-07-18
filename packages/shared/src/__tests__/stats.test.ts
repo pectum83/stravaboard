@@ -48,4 +48,14 @@ describe('activityAscentMean (standard parameters)', () => {
     expect(activityAscentMean({ time: [0, 1], distance: [0, 1], altitude: null, latlng: null })) //
       .toBeNull()
   })
+
+  it('returns null (does not throw) when the distance stream is missing or mismatched', () => {
+    const climb = ramp(1000, 6, 0.5)
+    // Altitude present but distance empty (some manual/indoor entries): unrankable.
+    expect(activityAscentMean({ ...climb, distance: [], latlng: null })).toBeNull()
+    // Any other length disagreement is skipped rather than throwing.
+    expect(
+      activityAscentMean({ ...climb, distance: climb.distance.slice(0, -1), latlng: null }),
+    ).toBeNull()
+  })
 })

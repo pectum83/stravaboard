@@ -80,7 +80,11 @@ list's "Best ascent speed" sort and the 🥇🥈🥉 badges. Runs `detectAscents
 (`{minGainM:30, descentToleranceM:10, pauseThresholdS:30}`) and aggregates —
 deliberately settings-independent so rankings stay stable and the server never
 recomputes 1400+ activities on a settings change. Returns `null` with no
-altitude, `0` when no ascent qualifies. Persisted to `activities.ascentMeanVSpeed`.
+altitude **or when time/distance/altitude lengths disagree** (e.g. an altitude
+stream with a missing/partial distance stream — unrankable, never throws),
+`0` when no ascent qualifies. Persisted to `activities.ascentMeanVSpeed`; the
+sync wraps the call in `SyncService.ascentMetric` so a malformed stream set
+degrades to `0` instead of aborting the whole sync.
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 

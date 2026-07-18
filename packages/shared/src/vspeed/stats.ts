@@ -32,6 +32,12 @@ export const STANDARD_SEGMENT_PARAMS = {
 export function activityAscentMean(streams: ActivityStreams): number | null {
   const altitude = streams.altitude
   if (altitude === null || altitude.length === 0) return null
+  // Segmentation needs time/distance/altitude to line up. Some activities carry
+  // an altitude stream but a missing or partial distance stream (e.g. a manual
+  // or indoor entry); those can't be measured consistently, so they don't rank.
+  if (streams.time.length !== altitude.length || streams.distance.length !== altitude.length) {
+    return null
+  }
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, {
     thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
   })

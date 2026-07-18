@@ -251,9 +251,22 @@ export class SyncService {
   /** Persist streams and refresh the derived sort/badge metric together. */
   private storeStreams(activityId: number, streams: ActivityStreams): void {
     saveStreams(this.db, activityId, streams, new Date(this.nowMs()).toISOString())
-    // ?? 0: "computed, nothing rankable" — NULL must stay reserved for
-    // "not computed yet" or the metric backfill would never terminate.
-    setAscentMeanVSpeed(this.db, activityId, activityAscentMean(streams) ?? 0)
+    setAscentMeanVSpeed(this.db, activityId, this.ascentMetric(streams))
+  }
+
+  /**
+   * The stored sort/badge metric, defensively. `0` means "computed, nothing
+   * rankable" — NULL stays reserved for "not computed yet" (or the backfill
+   * never terminates). A single malformed stream set must never abort a sync,
+   * so any unexpected failure is logged and treated as unrankable.
+   */
+  private ascentMetric(streams: ActivityStreams): number {
+    try {
+      return activityAscentMean(streams) ?? 0
+    } catch (err) {
+      this.log(`ascent metric skipped: ${err instanceof Error ? err.message : String(err)}`)
+      return 0
+    }
   }
 
   /**
@@ -267,7 +280,7 @@ export class SyncService {
       this.log(`computing ascent metrics for ${ids.length} activities`)
       for (const id of ids) {
         const streams = getStreams(this.db, id)
-        setAscentMeanVSpeed(this.db, id, streams ? (activityAscentMean(streams) ?? 0) : 0)
+        setAscentMeanVSpeed(this.db, id, streams ? this.ascentMetric(streams) : 0)
       }
     }
   }
