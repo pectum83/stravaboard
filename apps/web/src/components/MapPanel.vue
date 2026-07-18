@@ -23,7 +23,8 @@ const props = defineProps<{
 const container = ref<HTMLElement | null>(null)
 /** WebGL init can fail (old GPU, headless CI); the panel degrades to text. */
 const failed = ref(false)
-const layer = ref<MapLayerId>('streets')
+// Open on the topo (contour) map when a key unlocks it; plain OSM otherwise.
+const layer = ref<MapLayerId>(props.maptilerKey ? 'topo' : 'streets')
 const layers = computed(() => availableLayers(props.maptilerKey))
 
 let map: maplibregl.Map | null = null

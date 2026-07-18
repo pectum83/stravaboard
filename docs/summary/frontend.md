@@ -108,7 +108,8 @@ rounded value}} → null`. **Gotcha: per-datapoint labels only render on
   wants `[lng,lat]`, always swap through this helper**, `boundsOf`,
   `traceGeoJSON`.
 - `components/MapPanel.vue` — props `{latlng|null, hoverIndex|null,
-maptilerKey|null}`. States: `latlng===null` → "No GPS trace" text; WebGL
+maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
+  States: `latlng===null` → "No GPS trace" text; WebGL
   init failure → "Map unavailable" (`failed` ref, constructor try/catch +
   map 'error' event with no canvas). Overlays (trace source/layer, terrain +
   pitch 60) re-applied on every `style.load` (style switches wipe them).

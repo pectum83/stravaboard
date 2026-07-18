@@ -116,19 +116,30 @@ describe('MapPanel', () => {
     expect(marker.remove).toHaveBeenCalledTimes(1)
   })
 
+  it('defaults to the topo layer with a key', () => {
+    const wrapper = mountPanel()
+    const active = wrapper.find('.layer-switch button.active')
+    expect(active.text()).toBe('topo')
+    // The map is created with the Outdoor style straight away.
+    expect((mocks.state.maps[0]!.options as { style: string }).style).toBe(
+      'https://api.maptiler.com/maps/outdoor-v2/style.json?key=k-1',
+    )
+  })
+
   it('offers layer pills with a key and switches styles', async () => {
     const wrapper = mountPanel()
     const pills = wrapper.findAll('.layer-switch button')
     expect(pills.map((p) => p.text())).toEqual(['streets', 'topo', 'satellite', 'terrain'])
 
     const map = mocks.state.maps[0]!
-    await pills.find((p) => p.text() === 'topo')!.trigger('click')
-    expect(map.setStyle).toHaveBeenCalledWith(
-      'https://api.maptiler.com/maps/outdoor-v2/style.json?key=k-1',
-    )
+    // Topo is the default, so switch away and back to exercise setStyle both ways.
     await pills.find((p) => p.text() === 'satellite')!.trigger('click')
     expect(map.setStyle).toHaveBeenCalledWith(
       'https://api.maptiler.com/maps/hybrid/style.json?key=k-1',
+    )
+    await pills.find((p) => p.text() === 'topo')!.trigger('click')
+    expect(map.setStyle).toHaveBeenCalledWith(
+      'https://api.maptiler.com/maps/outdoor-v2/style.json?key=k-1',
     )
   })
 
