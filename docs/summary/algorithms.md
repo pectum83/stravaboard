@@ -85,13 +85,16 @@ summit sample) but is subtracted from the following descent.
 `aggregateSegments(segments) → {totalGainM, totalTimeS, meanVSpeed|null}` =
 Σgain / Σeffective time · 3600; null when no segments.
 
-**Lift / artefact cap.** `MAX_HUMAN_VSPEED = 2000` (m/h) + `partitionSegments(
+**Lift / artefact cap.** `MAX_HUMAN_VSPEED = 1400` (m/h) + `partitionSegments(
 segments, maxAbsVSpeed=MAX_HUMAN_VSPEED) → {kept, excluded}` split on
-`|meanVSpeed| > cap`. Segments faster than any human (mechanical lifts, or GPS
-artefacts that survived despiking) are dropped from the ascent mean, the metric
-and the badges. **Applied to ascents only** — descents legitimately exceed the
-cap (skiing/running downhill), and descent spikes are already handled by despike.
-The chart keeps excluded climbs as `VSpeedModel.excludedAscents` (drawn greyed).
+`|meanVSpeed| > cap`. Segments faster than any human (mechanical lifts — slow
+resort lifts run ~1450 m/h — or GPS artefacts that survived despiking) are
+dropped from the ascent mean, the metric and the badges. **Applied to ascents
+only** — descents legitimately exceed the cap (skiing/running downhill), and
+descent spikes are already handled by despike. The **stored metric** uses the
+fixed `MAX_HUMAN_VSPEED`; the **chart** uses the tunable `liftMaxVSpeed` setting
+(default 1400), passed to `partitionSegments` by `computeVSpeedModel`. Excluded
+climbs are kept as `VSpeedModel.excludedAscents` (drawn greyed).
 
 `activityAscentMean(streams) → number|null` — the ranking metric behind the
 list's "Best ascent speed" sort and the 🥇🥈🥉 badges. **Despikes altitude**,
@@ -104,10 +107,10 @@ missing/partial distance stream — unrankable, never throws), `0` when no ascen
 qualifies (incl. when every ascent was a lift). Persisted to
 `activities.ascentMeanVSpeed`; the sync wraps the call in
 `SyncService.ascentMetric` so a malformed stream set degrades to `0` instead of
-aborting the whole sync. **Changing this algorithm requires recomputing stored
-values** — see migration `0004_recompute_metrics` (data-and-api.md): it NULLs
-every `ascent_mean_vspeed` so the next sync's local `computeMissingMetrics`
-refills them with no API calls.
+aborting the whole sync. **Changing this algorithm (or `MAX_HUMAN_VSPEED`)
+requires recomputing stored values** — migrations `0004_recompute_metrics` /
+`0005_recompute_lift_cap` (data-and-api.md) NULL every `ascent_mean_vspeed` so
+the next sync's local `computeMissingMetrics` refills them with no API calls.
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 

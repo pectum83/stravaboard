@@ -29,11 +29,12 @@ export const STANDARD_SEGMENT_PARAMS = {
  * Ascent/descent segments faster than this (m/h, absolute) are treated as
  * non-human — a mechanical lift, or a GPS artefact that survived despiking —
  * and excluded from the ascent/descent means, the ranking metric and the
- * badges. Elite human ascent tops out around 1900 m/h; lifts run ~2500 m/h and
- * up, so 2000 separates them cleanly. Fixed (like `STANDARD_SEGMENT_PARAMS`) so
- * rankings stay comparable across activities.
+ * badges. Slow resort lifts run as low as ~1450 m/h, so the cap sits just below
+ * to catch them. Fixed (like `STANDARD_SEGMENT_PARAMS`) so rankings stay
+ * comparable across activities; the chart's cap is the tunable `liftMaxVSpeed`
+ * setting, which defaults to this value.
  */
-export const MAX_HUMAN_VSPEED = 2000
+export const MAX_HUMAN_VSPEED = 1400
 
 /**
  * Split segments into those within human vertical speed (`kept`) and those above

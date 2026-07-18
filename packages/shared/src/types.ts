@@ -107,6 +107,12 @@ export interface Settings {
   pauseThresholdS: number
   /** Distance window for the terrain-slope series, meters. */
   slopeWindowM: number
+  /**
+   * Ascents whose mean vertical speed exceeds this (m/h) are treated as
+   * mechanical lifts / GPS artefacts and excluded from the ascent mean on the
+   * chart. Slow resort lifts run ~1450 m/h, so the default sits just below.
+   */
+  liftMaxVSpeed: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -117,6 +123,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ascentDescentToleranceM: 10,
   pauseThresholdS: 30,
   slopeWindowM: 100,
+  // Kept in step with MAX_HUMAN_VSPEED (the fixed metric cap) — see vspeed/stats.
+  liftMaxVSpeed: 1400,
 }
 
 export type SyncStateName = 'idle' | 'syncing' | 'waiting_rate_limit' | 'error'

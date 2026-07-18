@@ -74,10 +74,10 @@ Fetches `api.config()` on mount for the MapTiler key.
 VSpeedModel {streams, instant, short, long, ascents, descents, excludedAscents,
 pauses, ascentStats, descentStats}`. Altitude is `despike`d once at entry
   (feeds every series/slope/segment); the instant series then runs
-  `medianFilter(alt, 5)` on top. Ascents are split via `partitionSegments`:
-  lift/artefact climbs (>`MAX_HUMAN_VSPEED`) go to `excludedAscents` and out of
-  `ascents`/`ascentStats`; descents are not capped. Single computation point for
-  chart + stats + segments.
+  `medianFilter(alt, 5)` on top. Ascents are split via `partitionSegments(...,
+settings.liftMaxVSpeed)`: lift/artefact climbs above the cap go to
+  `excludedAscents` and out of `ascents`/`ascentStats`; descents are not capped.
+  Single computation point for chart + stats + segments.
 - `chart/buildChartOptions.ts` — **rendering only**, `(model, settings) →
 EChartsOption`. 6 line series (7 when there are excluded climbs); colors =
   validated dataviz categorical slots (blue/aqua/yellow instant/short/long, green
@@ -142,7 +142,7 @@ maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
   date/sport/sort emit immediately, Clear button only when a filter is active.
 - `ActivityStats.vue` — props `{ascent, descent}: SegmentAggregate`; renders
   `↑ 650 m · 612 m/h` / `—` when null.
-- `SettingsPanel.vue` — collapsible `<details>` of 7 number inputs (fields
+- `SettingsPanel.vue` — collapsible `<details>` of 8 number inputs (fields
   array). Each input is a **local draft** (`drafts` reactive, synced from the
   store via a deep watch); `commit(field)` on `@change` (blur) **and**
   `@keydown.enter` clamps to min/max, writes through the settings store, and

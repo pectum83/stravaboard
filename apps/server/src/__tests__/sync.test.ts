@@ -142,15 +142,15 @@ describe('SyncService', () => {
     for (let t = 0; t <= 600; t++) {
       time.push(t)
       distance.push(t * 6)
-      altitude.push(100 + t * 0.5)
+      altitude.push(100 + t * 0.2)
     }
     saveStreams(db, 300, { time, distance, altitude, latlng: [] }, '2025')
     expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeNull()
 
     const again = makeSync(db, { activities: [] })
     await runSync(again.sync)
-    // 300 m gain over 600 s = 1800 m/h, computed locally without API calls.
-    expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeCloseTo(1800, 4)
+    // 120 m gain over 600 s = 720 m/h (human), computed locally without API calls.
+    expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeCloseTo(720, 4)
     expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
   })
 

@@ -74,6 +74,7 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
   // are drawn greyed so the exclusion is visible. Descents are never capped.
   const { kept: ascents, excluded: excludedAscents } = partitionSegments(
     detectAscents(time, distance, altitude, segmentOptions),
+    settings.liftMaxVSpeed,
   )
   const descents = detectDescents(time, distance, altitude, segmentOptions)
 

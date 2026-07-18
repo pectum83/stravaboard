@@ -19,10 +19,12 @@ distance:
 
 Bad GPS is filtered out: altitude **spikes are despiked** before any analysis
 (so a stray fix at the end of a track no longer invents a climb), and
-**implausibly fast climbs** — mechanical ski lifts, or artefacts faster than any
-human ascent — are shown greyed on the chart and left out of the ascent mean,
-badges and sort (descents aren't capped, since skiing/running downhill is
-genuinely fast).
+**fast climbs above a cap** — mechanical ski lifts (even slow resort ones,
+~1450 m/h), or artefacts faster than any human ascent — are shown greyed on the
+chart and left out of the ascent mean, badges and sort (descents aren't capped,
+since skiing/running downhill is genuinely fast). The chart cap is the
+**Lift/artefact cap** setting (default 1400 m/h); the ranking uses the same
+value as a fixed constant.
 
 Ascent/descent means exclude **pauses**: periods where the GPS position stays
 within ~5 m for more than 30 s (threshold configurable) — detected from

@@ -42,9 +42,9 @@ describe('aggregateSegments', () => {
 
 describe('partitionSegments', () => {
   it('keeps human-speed segments and excludes faster ones (both directions)', () => {
-    const human = segment(300, 600) // 1800 m/h
-    const lift = segment(600, 600) // 3600 m/h
-    const artefactDrop = segment(-600, 600) // -3600 m/h
+    const human = segment(200, 600) // 1200 m/h
+    const lift = segment(300, 600) // 1800 m/h
+    const artefactDrop = segment(-300, 600) // -1800 m/h
     const { kept, excluded } = partitionSegments([human, lift, artefactDrop])
     expect(kept).toEqual([human])
     expect(excluded).toEqual([lift, artefactDrop])
@@ -62,9 +62,9 @@ describe('partitionSegments', () => {
 
 describe('activityAscentMean (standard parameters)', () => {
   it('computes the pause-excluded mean of a climb', () => {
-    // 500 m gain over 1000 s + a 100 s standstill → 1800 m/h effective.
-    const s = insertPause(withLatlng(ramp(1000, 6, 0.5)), 500, 100)
-    expect(activityAscentMean(s)).toBeCloseTo(1800, 4)
+    // 200 m gain over 1000 s + a 100 s standstill → 720 m/h effective (human).
+    const s = insertPause(withLatlng(ramp(1000, 6, 0.2)), 500, 100)
+    expect(activityAscentMean(s)).toBeCloseTo(720, 4)
   })
 
   it('excludes a mechanical lift (faster than any human climb)', () => {

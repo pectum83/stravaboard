@@ -5,7 +5,7 @@ import { buildChartOptions } from '../chart/buildChartOptions'
 import { computeVSpeedModel } from '../chart/computeVSpeed'
 
 function climbStreams(): ActivityStreams {
-  // 20 min climb at +0.5 m/s (1800 m/h) then 10 min descent at -1 m/s
+  // 20 min human climb at +0.2 m/s (720 m/h) then 10 min descent at -1 m/s
   // (-3600 m/h), 1 m/s forward.
   const time: number[] = []
   const distance: number[] = []
@@ -13,7 +13,7 @@ function climbStreams(): ActivityStreams {
   for (let t = 0; t <= 1800; t++) {
     time.push(t)
     distance.push(t)
-    altitude.push(t <= 1200 ? 500 + t * 0.5 : 1100 - (t - 1200))
+    altitude.push(t <= 1200 ? 500 + t * 0.2 : 740 - (t - 1200))
   }
   return { time, distance, altitude, latlng: null }
 }
@@ -58,8 +58,8 @@ describe('buildChartOptions', () => {
     const slope = (opts.series as LineSeriesOption[])[5]!
     expect(slope.yAxisIndex).toBe(1)
     const data = slope.data as ([number, number] | null)[]
-    // climb: +0.5 m per 1 m forward = 50 %; descent: -1 m per m = -100 %
-    expect(data[600]![1]).toBeCloseTo(50, 6)
+    // climb: +0.2 m per 1 m forward = 20 %; descent: -1 m per m = -100 %
+    expect(data[600]![1]).toBeCloseTo(20, 6)
     expect(data[1500]![1]).toBeCloseTo(-100, 6)
   })
 
@@ -68,8 +68,8 @@ describe('buildChartOptions', () => {
     const data = ascent.data as ({ value: [number, number] } | [number, number] | null)[]
     // One climb -> start point, labeled end point, null separator
     expect(data).toHaveLength(3)
-    expect((data[0] as [number, number])[1]).toBeCloseTo(1800, 6)
-    expect((data[1] as { value: [number, number] }).value[1]).toBeCloseTo(1800, 6)
+    expect((data[0] as [number, number])[1]).toBeCloseTo(720, 6)
+    expect((data[1] as { value: [number, number] }).value[1]).toBeCloseTo(720, 6)
     expect(data[2]).toBeNull()
   })
 
@@ -84,7 +84,7 @@ describe('buildChartOptions', () => {
   it('labels each segment with its rounded value at the right end', () => {
     const series = options().series as LineSeriesOption[]
     for (const [idx, expected] of [
-      [3, '1800'],
+      [3, '720'],
       [4, '-3600'],
     ] as const) {
       const end = (series[idx]!.data as { value?: unknown; label?: { formatter: string } }[])[1]!

@@ -11,6 +11,7 @@ const settingsSchema = z.object({
   ascentDescentToleranceM: z.number().min(0).max(500),
   pauseThresholdS: z.number().int().min(5).max(600),
   slopeWindowM: z.number().int().min(10).max(2000),
+  liftMaxVSpeed: z.number().int().min(500).max(6000),
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {

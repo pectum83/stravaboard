@@ -55,6 +55,9 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   - the lift/artefact cap. The next sync's local `computeMissingMetrics` refills
     every row with the new algorithm (no API). **Until that sync runs the
     ascent-speed sort/badges are empty — trigger a sync after deploying.**
+- Migration `0005_recompute_lift_cap.sql` (same NULL-reset pattern) recomputes
+  after `MAX_HUMAN_VSPEED` dropped 2000 → 1400 (to catch slow ~1450 m/h resort
+  lifts). Same "sync after deploying" caveat.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 
@@ -92,8 +95,8 @@ c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
 - `GET /config` → `{maptilerKey: string|null}` (config.ts; null when unset).
 - `GET/PUT /settings` — zod: instantWindowS 1–600, shortWindowS 1–3600,
   longWindowS 1–7200, ascentMinGainM 1–1000, ascentDescentToleranceM 0–500,
-  pauseThresholdS int 5–600, slopeWindowM int 10–2000. PUT requires the full
-  object.
+  pauseThresholdS int 5–600, slopeWindowM int 10–2000, liftMaxVSpeed int
+  500–6000 (chart lift/artefact cap, default 1400). PUT requires the full object.
 - `POST /sync` (202 fire-and-forget); `GET /sync/status` → `SyncStatus`
   (state, fetchedActivities, pendingStreams, pendingLatlngBackfill,
   rateLimitResumeAt?, error?).

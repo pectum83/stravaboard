@@ -33,6 +33,7 @@ const fields: Field[] = [
   },
   { key: 'pauseThresholdS', label: 'Pause threshold', unit: 's', min: 5, max: 600 },
   { key: 'slopeWindowM', label: 'Slope window', unit: 'm', min: 10, max: 2000 },
+  { key: 'liftMaxVSpeed', label: 'Lift/artefact cap', unit: 'm/h', min: 500, max: 6000 },
 ]
 
 // Local draft text per field, so typing (clearing, retyping) never fights a
