@@ -13,17 +13,24 @@ controls wrap) and the chart renders in compact mode (see buildChartOptions).
 ## Data flow
 
 - `api/client.ts` — typed fetch wrappers: `authStatus`, `activities(params)`
-  (`ActivityListParams {limit, before, q, from, to, sportType}`), `sportTypes()`,
-  `refreshActivity(id)` (POST), `config()` (`{maptilerKey}`), `streams(id)`,
-  `settings`/`saveSettings`, `startSync`, `syncStatus`. Errors → `ApiError(status)`.
+  (`ActivityListParams {limit, before, sort, q, from, to, sportType}`; `sort:
+ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
+  `badges()` (`ActivityBadges`), `sportTypes()`, `refreshActivity(id)` (POST),
+  `config()` (`{maptilerKey}`), `streams(id)`, `settings`/`saveSettings`,
+  `startSync`, `syncStatus`. Errors → `ApiError(status)`.
 - `stores/settings.ts` (Pinia setup store) — `settings` seeded from
   `DEFAULT_SETTINGS`; `load()` GET; `update(patch)` applies immediately,
   **debounced 500 ms PUT** of the full object; `saveError`.
-- `stores/activities.ts` — list + cursor pagination (PAGE_SIZE 50) + selection
+- `stores/activities.ts` — list + composite-cursor pagination (PAGE_SIZE 50) +
+  selection
   - **filters**: `filters: ActivityFilters {q, from, to, sportType}` ('' = off),
     `EMPTY_FILTERS`, `setFilters(patch)` merges then resets list & reloads,
-    `loadMore()` sends only non-empty filters, `sportTypes` loaded with the first
-    page, `select(id)`.
+    `loadMore()` sends only non-empty filters + the active sort, `sportTypes`
+    loaded with the first page, `select(id)`.
+  - **sort & badges**: `sort` ref (default `'date'`), `setSort(next)` resets &
+    reloads; `badges` ref (`NO_BADGES` default), `loadBadges()`. `loadFirstPage`
+    loads badges too; `refreshActivity` reloads badges (a reload can change a
+    ranking). `reload()` re-runs the current query in place.
 - `composables/useStreams.ts` — watches selected id, module-level
   `Map<number, ActivityStreams>` cache, 404 → `missing`; returns `reload()`
   which evicts the current id from the cache and refetches.
@@ -97,13 +104,22 @@ maptilerKey|null}`. States: `latlng===null` → "No GPS trace" text; WebGL
 
 ## Other components (presentational)
 
-- `ActivityList.vue` — props activities/selectedId/hasMore/loading, emits
-  select/loadMore. Empty text: "No activities yet.".
-- `ActivityFilters.vue` — props `{filters, sportTypes}`, emits
-  `update(patch)`; search input debounced 300 ms in-component, date/sport emit
-  immediately, Clear button only when a filter is active.
+- `ActivityList.vue` — props activities/selectedId/hasMore/loading/**badges**,
+  emits select/loadMore. Shows `↑ <n> m/h` (ascentMeanVSpeed) in the meta line
+  and 🥇🥈🥉 medals before the name via `badgeMap` (id → medals, with a `#N
+<ranking>` title). Empty text: "No activities yet.".
+- `ActivityFilters.vue` — props `{filters, sportTypes, sort}`, emits
+  `update(patch)` + `update:sort`. Wrapped in a collapsible `<details class=
+"filters">`; the `<summary>` shows the active sort + "· filtered" note so it
+  stays informative when closed. Search input debounced 300 ms in-component,
+  date/sport/sort emit immediately, Clear button only when a filter is active.
 - `ActivityStats.vue` — props `{ascent, descent}: SegmentAggregate`; renders
   `↑ 650 m · 612 m/h` / `—` when null.
-- `SettingsPanel.vue` — 7 number inputs (fields array), clamps to min/max,
-  writes through settings store. `SyncStatusBar.vue` — polls
-  `/api/sync/status` every 2 s, "Sync now" button, emits `synced`.
+- `SettingsPanel.vue` — collapsible `<details>` of 7 number inputs (fields
+  array). Each input is a **local draft** (`drafts` reactive, synced from the
+  store via a deep watch); `commit(field)` on `@change` (blur) **and**
+  `@keydown.enter` clamps to min/max, writes through the settings store, and
+  normalises the text — so typing/clearing never fights a controlled value and
+  Enter applies immediately. An empty/garbage field reverts to the stored value
+  on commit. `SyncStatusBar.vue` — polls `/api/sync/status` every 2 s, "Sync
+  now" button, emits `synced`.

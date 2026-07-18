@@ -23,9 +23,13 @@ position, not from GPS speed. Whole-activity ascent and descent means are shown
 above the chart. A **map panel** beside the chart shows the activity trace with
 streets / satellite / 3D-terrain layers, and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
-sport type. A **"↻ Reload from Strava"** button re-fetches the selected
-activity (data and streams) — use it after renaming, cropping or otherwise
-editing an activity on strava.com. The layout is responsive: on phones the
+sport type (all gathered in a collapsible "Filters & sort" section) and
+**sorted** by date, best mean ascent speed, or total elevation gain. The three
+best activities in each ranking get 🥇🥈🥉 **badges** in the list; the mean
+ascent speed is shown on every activity. A **"↻ Reload from Strava"** button
+re-fetches the selected activity (data and streams) — use it after renaming,
+cropping or otherwise editing an activity on strava.com. The layout is
+responsive: on phones the
 list, chart and map stack vertically and the chart switches to a compact
 rendering.
 
@@ -82,6 +86,9 @@ next sync. It respects the same rate limits and resumes across restarts; the
 map shows "No GPS trace" for an activity until its backfill has run. Settings
 already saved in v1 keep their values (the new defaults — instant 60 s, short
 120 s — only apply to fresh databases); adjust them in the Settings panel.
+The mean-ascent-speed ranking used for sorting and badges is computed with
+fixed standard parameters, so it stays stable regardless of your chart
+settings; it is backfilled locally (no extra Strava calls) on the next sync.
 
 ## Quality gates
 

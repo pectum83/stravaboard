@@ -35,10 +35,19 @@ export const activities = sqliteTable(
     elapsedTimeS: integer('elapsed_time_s').notNull(),
     totalElevationGainM: real('total_elevation_gain_m').notNull(),
     streamsStatus: text('streams_status', { enum: ['pending', 'done', 'none'] }).notNull(),
+    /**
+     * Whole-activity mean ascent speed (m/h), standard segment parameters —
+     * the sort/badge metric. NULL = not computed yet or no altitude data;
+     * 0 = computed, no qualifying ascent.
+     */
+    ascentMeanVSpeed: real('ascent_mean_vspeed'),
     /** Full Strava summary payload (JSON) so future features need no re-sync. */
     rawSummary: text('raw_summary').notNull(),
   },
-  (t) => [index('idx_activities_athlete_start').on(t.athleteId, t.startDateEpoch)],
+  (t) => [
+    index('idx_activities_athlete_start').on(t.athleteId, t.startDateEpoch),
+    index('idx_activities_athlete_vspeed').on(t.athleteId, t.ascentMeanVSpeed),
+  ],
 )
 
 export const activityStreams = sqliteTable('activity_streams', {

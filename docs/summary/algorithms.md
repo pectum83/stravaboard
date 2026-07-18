@@ -74,6 +74,14 @@ summit sample) but is subtracted from the following descent.
 `aggregateSegments(segments) → {totalGainM, totalTimeS, meanVSpeed|null}` =
 Σgain / Σeffective time · 3600; null when no segments.
 
+`activityAscentMean(streams) → number|null` — the ranking metric behind the
+list's "Best ascent speed" sort and the 🥇🥈🥉 badges. Runs `detectAscents` +
+`detectPauses` with the FIXED `STANDARD_SEGMENT_PARAMS`
+(`{minGainM:30, descentToleranceM:10, pauseThresholdS:30}`) and aggregates —
+deliberately settings-independent so rankings stay stable and the server never
+recomputes 1400+ activities on a settings change. Returns `null` with no
+altitude, `0` when no ascent qualifies. Persisted to `activities.ascentMeanVSpeed`.
+
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 
 1 Hz synthetic streams with known ground truth: `ramp(durS, speedMS, vSpeedMS)`

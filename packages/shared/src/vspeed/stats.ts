@@ -1,4 +1,6 @@
-import type { Ascent } from './ascents.js'
+import { detectAscents, type Ascent } from './ascents.js'
+import { detectPauses } from './pauses.js'
+import type { ActivityStreams } from '../types.js'
 
 /** Whole-activity aggregate over ascent (or descent) segments. */
 export interface SegmentAggregate {
@@ -8,6 +10,37 @@ export interface SegmentAggregate {
   totalTimeS: number
   /** Overall mean vertical speed, m/h, or null when there are no segments. */
   meanVSpeed: number | null
+}
+
+/**
+ * Standard segment parameters used for the STORED per-activity ascent mean
+ * (sorting and best-of badges). Deliberately independent from each user's
+ * chart settings: a ranking is only meaningful when every activity is
+ * measured the same way.
+ */
+export const STANDARD_SEGMENT_PARAMS = {
+  minGainM: 30,
+  descentToleranceM: 10,
+  pauseThresholdS: 30,
+} as const
+
+/**
+ * Whole-activity mean ascent speed (m/h, pause-excluded) with the standard
+ * parameters. Returns null when the activity has no altitude data, 0 when it
+ * has altitude but no qualifying ascent.
+ */
+export function activityAscentMean(streams: ActivityStreams): number | null {
+  const altitude = streams.altitude
+  if (altitude === null || altitude.length === 0) return null
+  const pauses = detectPauses(streams.time, streams.latlng, streams.distance, {
+    thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
+  })
+  const ascents = detectAscents(streams.time, streams.distance, altitude, {
+    minGainM: STANDARD_SEGMENT_PARAMS.minGainM,
+    descentToleranceM: STANDARD_SEGMENT_PARAMS.descentToleranceM,
+    pauses,
+  })
+  return aggregateSegments(ascents).meanVSpeed ?? 0
 }
 
 /** Aggregate segments into a whole-activity mean: Σ gain / Σ effective time. */

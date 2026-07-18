@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { DEFAULT_SETTINGS } from '@stravaboard/shared'
@@ -20,6 +20,11 @@ describe('SettingsPanel', () => {
     vi.useFakeTimers()
     vi.mocked(api.saveSettings).mockResolvedValue({ ...DEFAULT_SETTINGS })
   })
+  afterEach(() => {
+    // Discard any pending debounced-save timers so they can't fire in a later test.
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
 
   it('renders the seven setting fields with current values', () => {
     const wrapper = mount(SettingsPanel)
@@ -32,15 +37,53 @@ describe('SettingsPanel', () => {
     expect((inputs[6]!.element as HTMLInputElement).value).toBe('100')
   })
 
-  it('updates the store immediately and saves debounced', async () => {
+  it('commits on change (blur) and saves debounced', async () => {
     const wrapper = mount(SettingsPanel)
     const store = useSettingsStore()
-    await wrapper.findAll('input')[1]!.setValue('90')
+    await wrapper.findAll('input')[1]!.setValue('90') // setValue fires input + change
     expect(store.settings.shortWindowS).toBe(90)
     expect(api.saveSettings).not.toHaveBeenCalled()
 
     vi.advanceTimersByTime(600)
     expect(api.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ shortWindowS: 90 }))
+  })
+
+  it('commits on Enter without waiting for blur', async () => {
+    const wrapper = mount(SettingsPanel)
+    const store = useSettingsStore()
+    const input = wrapper.findAll('input')[1]!
+    // Type without committing (input only), then press Enter.
+    input.element.value = '75'
+    await input.trigger('input')
+    expect(store.settings.shortWindowS).toBe(120)
+    await input.trigger('keydown', { key: 'Enter' })
+    expect(store.settings.shortWindowS).toBe(75)
+  })
+
+  it('lets the field be cleared and retyped without snapping mid-edit', async () => {
+    const wrapper = mount(SettingsPanel)
+    const store = useSettingsStore()
+    const input = wrapper.findAll('input')[1]!
+    // Simulate keystrokes (input events only) — nothing commits until blur/Enter.
+    input.element.value = ''
+    await input.trigger('input')
+    input.element.value = '5'
+    await input.trigger('input')
+    expect(store.settings.shortWindowS).toBe(120)
+    expect(api.saveSettings).not.toHaveBeenCalled()
+    await input.trigger('change')
+    expect(store.settings.shortWindowS).toBe(5)
+  })
+
+  it('reverts an emptied field to its stored value on commit', async () => {
+    const wrapper = mount(SettingsPanel)
+    const store = useSettingsStore()
+    const input = wrapper.findAll('input')[1]!
+    input.element.value = ''
+    await input.trigger('input')
+    await input.trigger('change')
+    expect(store.settings.shortWindowS).toBe(120)
+    expect((input.element as HTMLInputElement).value).toBe('120')
   })
 
   it('collapses rapid edits into a single save', async () => {
@@ -54,7 +97,7 @@ describe('SettingsPanel', () => {
     expect(api.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ shortWindowS: 80 }))
   })
 
-  it('clamps values outside the allowed range', async () => {
+  it('clamps values outside the allowed range on commit', async () => {
     const wrapper = mount(SettingsPanel)
     const store = useSettingsStore()
     await wrapper.findAll('input')[0]!.setValue('0')

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import type { ActivitySummary } from '@stravaboard/shared'
+import { computed } from 'vue'
+import type { ActivityBadges, ActivitySummary } from '@stravaboard/shared'
 
-defineProps<{
+const props = defineProps<{
   activities: ActivitySummary[]
   selectedId: number | null
   hasMore: boolean
   loading: boolean
+  badges: ActivityBadges
 }>()
 
 const emit = defineEmits<{
@@ -14,6 +16,22 @@ const emit = defineEmits<{
 }>()
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+const MEDALS = ['🥇', '🥈', '🥉']
+
+/** Per activity id: the medals it holds, with a human title for the tooltip. */
+const badgeMap = computed(() => {
+  const map = new Map<number, { medal: string; title: string }[]>()
+  const add = (ids: number[], label: string) => {
+    ids.forEach((id, i) => {
+      const list = map.get(id) ?? []
+      list.push({ medal: MEDALS[i]!, title: `#${i + 1} ${label}` })
+      map.set(id, list)
+    })
+  }
+  add(props.badges.ascentSpeed, 'ascent speed')
+  add(props.badges.elevation, 'elevation')
+  return map
+})
 
 function formatDate(iso: string): string {
   return dateFormat.format(new Date(iso))
@@ -37,12 +55,26 @@ function km(m: number): string {
           }"
           @click="emit('select', activity.id)"
         >
-          <span class="name">{{ activity.name }}</span>
+          <span class="name">
+            <span v-if="badgeMap.get(activity.id)" class="medals">
+              <span
+                v-for="b in badgeMap.get(activity.id)"
+                :key="b.title"
+                class="medal"
+                :title="b.title"
+                >{{ b.medal }}</span
+              >
+            </span>
+            {{ activity.name }}
+          </span>
           <span class="meta">
             {{ formatDate(activity.startDate) }} · {{ activity.sportType }}
           </span>
           <span class="meta">
             {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.totalElevationGainM) }} m
+            <template v-if="activity.ascentMeanVSpeed">
+              · ↑ {{ Math.round(activity.ascentMeanVSpeed) }} m/h
+            </template>
             <em v-if="activity.streamsStatus === 'none'" class="badge">no elevation data</em>
             <em v-else-if="activity.streamsStatus === 'pending'" class="badge">syncing…</em>
           </span>
@@ -102,6 +134,14 @@ ul {
 
 .name {
   font-weight: 600;
+}
+
+.medals {
+  margin-right: 2px;
+}
+
+.medal {
+  font-size: 0.85rem;
 }
 
 .meta {

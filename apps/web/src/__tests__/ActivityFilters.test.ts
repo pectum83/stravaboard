@@ -3,11 +3,12 @@ import { mount } from '@vue/test-utils'
 import ActivityFilters from '../components/ActivityFilters.vue'
 import { EMPTY_FILTERS } from '../stores/activities'
 
-function mountFilters(overrides = {}) {
+function mountFilters(overrides = {}, sort: 'date' | 'ascentSpeed' | 'elevation' = 'date') {
   return mount(ActivityFilters, {
     props: {
       filters: { ...EMPTY_FILTERS, ...overrides },
       sportTypes: ['Run', 'TrailRun'],
+      sort,
     },
   })
 }
@@ -39,10 +40,33 @@ describe('ActivityFilters', () => {
 
   it('emits sport type changes immediately and lists the options', async () => {
     const wrapper = mountFilters()
-    const options = wrapper.findAll('option').map((o) => o.text())
+    const sportSelect = wrapper.find('select[aria-label="sport type"]')
+    const options = sportSelect.findAll('option').map((o) => o.text())
     expect(options).toEqual(['All sports', 'Run', 'TrailRun'])
-    await wrapper.find('select').setValue('Run')
+    await sportSelect.setValue('Run')
     expect(wrapper.emitted('update')).toEqual([[{ sportType: 'Run' }]])
+  })
+
+  it('emits sort changes with the three options', async () => {
+    const wrapper = mountFilters()
+    const sortSelect = wrapper.find('select[aria-label="sort by"]')
+    expect(sortSelect.findAll('option').map((o) => o.text().trim())).toEqual([
+      'Newest first',
+      'Best ascent speed',
+      'Most elevation',
+    ])
+    await sortSelect.setValue('ascentSpeed')
+    expect(wrapper.emitted('update:sort')).toEqual([['ascentSpeed']])
+  })
+
+  it('summarises the active sort and filtered state in the summary', () => {
+    const idle = mountFilters()
+    expect(idle.find('summary').text()).toContain('Newest first')
+    expect(idle.find('summary').text()).not.toContain('filtered')
+
+    const active = mountFilters({ q: 'x' }, 'elevation')
+    expect(active.find('summary').text()).toContain('Most elevation')
+    expect(active.find('summary').text()).toContain('filtered')
   })
 
   it('shows Clear only when a filter is active, and resets everything', async () => {

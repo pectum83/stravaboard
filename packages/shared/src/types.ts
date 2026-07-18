@@ -10,6 +10,12 @@ export interface ActivitySummary {
   elapsedTimeS: number
   totalElevationGainM: number
   streamsStatus: StreamsStatus
+  /**
+   * Whole-activity mean ascent speed (m/h) computed with the standard segment
+   * parameters — used for sorting and badges. null until computed or when the
+   * activity has no altitude data; 0 when it has no qualifying ascent.
+   */
+  ascentMeanVSpeed: number | null
 }
 
 export type StreamsStatus = 'pending' | 'done' | 'none'
@@ -73,6 +79,12 @@ export interface AuthStatus {
   athleteId?: number
   /** Display name of the logged-in athlete. */
   name?: string
+}
+
+/** Top-3 activity ids per ranking, best first. */
+export interface ActivityBadges {
+  ascentSpeed: number[]
+  elevation: number[]
 }
 
 export interface ActivitiesPage {

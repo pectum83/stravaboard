@@ -1,15 +1,28 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import type { ActivitySort } from '../api/client'
 import type { ActivityFilters } from '../stores/activities'
 
 const props = defineProps<{
   filters: ActivityFilters
   sportTypes: string[]
+  sort: ActivitySort
 }>()
 
 const emit = defineEmits<{
   update: [patch: Partial<ActivityFilters>]
+  'update:sort': [sort: ActivitySort]
 }>()
+
+const SORT_LABELS: Record<ActivitySort, string> = {
+  date: 'Newest first',
+  ascentSpeed: 'Best ascent speed',
+  elevation: 'Most elevation',
+}
+
+function onSort(event: Event): void {
+  emit('update:sort', (event.target as HTMLSelectElement).value as ActivitySort)
+}
 
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -54,48 +67,77 @@ function clear(): void {
 </script>
 
 <template>
-  <form class="filters" @submit.prevent>
-    <input
-      class="search"
-      type="search"
-      placeholder="Filter by name…"
-      aria-label="filter by name"
-      :value="q"
-      @input="onSearchInput"
-    />
-    <div class="row">
+  <details class="filters">
+    <summary>
+      Filters &amp; sort
+      <span class="summary-note">· {{ SORT_LABELS[sort] }}{{ active ? ' · filtered' : '' }}</span>
+    </summary>
+    <form class="fields" @submit.prevent>
       <input
-        type="date"
-        aria-label="from date"
-        :value="filters.from"
-        :max="filters.to || undefined"
-        @change="onDate('from', $event)"
+        class="search"
+        type="search"
+        placeholder="Filter by name…"
+        aria-label="filter by name"
+        :value="q"
+        @input="onSearchInput"
       />
-      <input
-        type="date"
-        aria-label="to date"
-        :value="filters.to"
-        :min="filters.from || undefined"
-        @change="onDate('to', $event)"
-      />
-    </div>
-    <div class="row">
-      <select aria-label="sport type" :value="filters.sportType" @change="onSport">
-        <option value="">All sports</option>
-        <option v-for="sport in sportTypes" :key="sport" :value="sport">{{ sport }}</option>
-      </select>
-      <button v-if="active" type="button" class="clear" @click="clear">Clear</button>
-    </div>
-  </form>
+      <div class="row">
+        <input
+          type="date"
+          aria-label="from date"
+          :value="filters.from"
+          :max="filters.to || undefined"
+          @change="onDate('from', $event)"
+        />
+        <input
+          type="date"
+          aria-label="to date"
+          :value="filters.to"
+          :min="filters.from || undefined"
+          @change="onDate('to', $event)"
+        />
+      </div>
+      <div class="row">
+        <select aria-label="sport type" :value="filters.sportType" @change="onSport">
+          <option value="">All sports</option>
+          <option v-for="sport in sportTypes" :key="sport" :value="sport">{{ sport }}</option>
+        </select>
+        <button v-if="active" type="button" class="clear" @click="clear">Clear</button>
+      </div>
+      <div class="row">
+        <select aria-label="sort by" :value="sort" @change="onSort">
+          <option v-for="(label, value) in SORT_LABELS" :key="value" :value="value">
+            {{ label }}
+          </option>
+        </select>
+      </div>
+    </form>
+  </details>
 </template>
 
 <style scoped>
 .filters {
+  border-bottom: 1px solid #e1e0d9;
+}
+
+summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #52514e;
+}
+
+.summary-note {
+  font-weight: 400;
+  color: #898781;
+}
+
+.fields {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border-bottom: 1px solid #e1e0d9;
+  padding: 0 12px 12px;
 }
 
 .row {

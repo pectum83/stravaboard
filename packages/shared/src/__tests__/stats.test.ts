@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Ascent } from '../vspeed/ascents.js'
-import { aggregateSegments } from '../vspeed/stats.js'
+import { activityAscentMean, aggregateSegments } from '../vspeed/stats.js'
+import { flat, insertPause, ramp, withLatlng } from './fixtures.js'
 
 function segment(gainM: number, effectiveTimeS: number): Ascent {
   return {
@@ -31,5 +32,20 @@ describe('aggregateSegments', () => {
 
   it('returns a null mean when there are no segments', () => {
     expect(aggregateSegments([])).toEqual({ totalGainM: 0, totalTimeS: 0, meanVSpeed: null })
+  })
+})
+
+describe('activityAscentMean (standard parameters)', () => {
+  it('computes the pause-excluded mean of a climb', () => {
+    // 500 m gain over 1000 s + a 100 s standstill → 1800 m/h effective.
+    const s = insertPause(withLatlng(ramp(1000, 6, 0.5)), 500, 100)
+    expect(activityAscentMean(s)).toBeCloseTo(1800, 4)
+  })
+
+  it('is 0 with altitude but no qualifying ascent, null without altitude', () => {
+    const f = flat(600)
+    expect(activityAscentMean({ ...f, latlng: null })).toBe(0)
+    expect(activityAscentMean({ time: [0, 1], distance: [0, 1], altitude: null, latlng: null })) //
+      .toBeNull()
   })
 })

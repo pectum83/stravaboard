@@ -45,7 +45,7 @@ describe('activities API', () => {
     const p1 = await app.inject({ method: 'GET', url: '/api/activities?limit=2', cookies })
     const body1 = p1.json()
     expect(body1.activities.map((a: { id: number }) => a.id)).toEqual([5, 4])
-    expect(body1.nextBefore).toBe('4000')
+    expect(body1.nextBefore).toBe('4000:4')
 
     const p2 = await app.inject({
       method: 'GET',
@@ -56,11 +56,66 @@ describe('activities API', () => {
 
     const last = await app.inject({
       method: 'GET',
-      url: '/api/activities?limit=2&before=2000',
+      url: `/api/activities?limit=2&before=${p2.json().nextBefore}`,
       cookies,
     })
     expect(last.json().activities.map((a: { id: number }) => a.id)).toEqual([1])
     expect(last.json().nextBefore).toBeUndefined()
+  })
+
+  it('sorts by ascent speed and elevation with paging cursors', async () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000, { ascentMeanVSpeed: 500, totalElevationGainM: 100 }))
+    upsertActivity(db, activity(2, 2000, { ascentMeanVSpeed: 900, totalElevationGainM: 50 }))
+    upsertActivity(db, activity(3, 3000, { ascentMeanVSpeed: null, totalElevationGainM: 800 }))
+    const { app, cookies } = await appWithAthlete(db)
+
+    const speed = await app.inject({
+      method: 'GET',
+      url: '/api/activities?sort=ascentSpeed',
+      cookies,
+    })
+    expect(speed.json().activities.map((a: { id: number }) => a.id)).toEqual([2, 1, 3])
+    expect(speed.json().activities[0].ascentMeanVSpeed).toBe(900)
+
+    const p1 = await app.inject({
+      method: 'GET',
+      url: '/api/activities?sort=elevation&limit=1',
+      cookies,
+    })
+    expect(p1.json().activities[0].id).toBe(3)
+    const p2 = await app.inject({
+      method: 'GET',
+      url: `/api/activities?sort=elevation&limit=1&before=${p1.json().nextBefore}`,
+      cookies,
+    })
+    expect(p2.json().activities[0].id).toBe(1)
+
+    const bad = await app.inject({
+      method: 'GET',
+      url: '/api/activities?sort=elevation&before=garbage',
+      cookies,
+    })
+    expect(bad.statusCode).toBe(400)
+  })
+
+  it('serves top-3 badges per ranking', async () => {
+    const db = testDb()
+    for (const [id, vspeed, gain] of [
+      [1, 500, 100],
+      [2, 900, 50],
+      [3, 0, 800],
+      [4, 700, 200],
+      [5, 600, 300],
+    ] as const) {
+      upsertActivity(
+        db,
+        activity(id, id * 1000, { ascentMeanVSpeed: vspeed, totalElevationGainM: gain }),
+      )
+    }
+    const { app, cookies } = await appWithAthlete(db)
+    const res = await app.inject({ method: 'GET', url: '/api/activities/badges', cookies })
+    expect(res.json()).toEqual({ ascentSpeed: [2, 4, 5], elevation: [3, 5, 4] })
   })
 
   it("never serves another athlete's activities or streams", async () => {

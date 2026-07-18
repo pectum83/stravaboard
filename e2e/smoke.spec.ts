@@ -26,7 +26,9 @@ test('dashboard flow: login, list, chart, settings persistence, logout', async (
   await page.locator('.settings summary').click()
   const shortInput = page.locator('.settings input').nth(1)
   await expect(shortInput).toHaveValue('120')
+  // Settings commit on Enter (or blur), not on every keystroke.
   await shortInput.fill('90')
+  await shortInput.press('Enter')
   // Debounced save (500 ms) + request round-trip
   await page.waitForTimeout(900)
 
@@ -35,7 +37,9 @@ test('dashboard flow: login, list, chart, settings persistence, logout', async (
   await expect(page.locator('.settings input').nth(1)).toHaveValue('90')
 
   // Restore the default for idempotent re-runs
-  await page.locator('.settings input').nth(1).fill('120')
+  const restore = page.locator('.settings input').nth(1)
+  await restore.fill('120')
+  await restore.press('Enter')
   await page.waitForTimeout(900)
 
   // The no-altitude activity shows the empty state instead of a chart

@@ -3,9 +3,13 @@ import type { ActivitiesPage } from '@stravaboard/shared'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import {
+  cursorFor,
   getActivity,
   listActivities,
   listSportTypes,
+  parseCursor,
+  topByAscentSpeed,
+  topByElevation,
   toSummary,
 } from '../repositories/activities.repo.js'
 import { getStreams } from '../repositories/streams.repo.js'
@@ -16,7 +20,9 @@ const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
-  before: z.coerce.number().int().positive().optional(),
+  /** Opaque keyset cursor `<sortValue>:<id>` from a previous page. */
+  before: z.string().optional(),
+  sort: z.enum(['date', 'ascentSpeed', 'elevation']).default('date'),
   q: z.string().trim().min(1).max(100).optional(),
   from: isoDay.optional(),
   to: isoDay.optional(),
@@ -31,11 +37,16 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid query', details: parsed.error.issues })
     }
-    const { limit, before, q, from, to, sportType } = parsed.data
+    const { limit, before, sort, q, from, to, sportType } = parsed.data
+    const cursor = before === undefined ? undefined : parseCursor(before)
+    if (before !== undefined && cursor === null) {
+      return reply.code(400).send({ error: 'invalid cursor' })
+    }
     const rows = listActivities(db, {
       athleteId: req.athleteId,
       limit,
-      beforeEpoch: before,
+      cursor: cursor ?? undefined,
+      sort,
       filter: {
         q,
         fromEpoch: from === undefined ? undefined : dayToEpoch(from),
@@ -46,12 +57,16 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     })
     const page: ActivitiesPage = {
       activities: rows.map(toSummary),
-      ...(rows.length === limit
-        ? { nextBefore: String(rows[rows.length - 1]!.startDateEpoch) }
-        : {}),
+      ...(rows.length === limit ? { nextBefore: cursorFor(sort, rows[rows.length - 1]!) } : {}),
     }
     return page
   })
+
+  // Top-3 activity ids per ranking — the list decorates them with badges.
+  app.get('/api/activities/badges', async (req) => ({
+    ascentSpeed: topByAscentSpeed(db, req.athleteId, 3),
+    elevation: topByElevation(db, req.athleteId, 3),
+  }))
 
   app.get('/api/activities/sport-types', async (req) => listSportTypes(db, req.athleteId))
 

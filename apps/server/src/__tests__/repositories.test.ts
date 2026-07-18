@@ -3,12 +3,16 @@ import { DEFAULT_SETTINGS } from '@stravaboard/shared'
 import {
   countPendingStreams,
   countStreamsMissingLatlng,
+  cursorFor,
   getActivity,
   listActivities,
   listPendingStreams,
   listSportTypes,
   listStreamsMissingLatlng,
+  parseCursor,
   setStreamsStatus,
+  topByAscentSpeed,
+  topByElevation,
   upsertActivity,
   type ActivityRow,
 } from '../repositories/activities.repo.js'
@@ -111,7 +115,7 @@ describe('activities repo', () => {
     const second = listActivities(db, {
       athleteId: 1,
       limit: 2,
-      beforeEpoch: first[1]!.startDateEpoch,
+      cursor: { value: first[1]!.startDateEpoch, id: first[1]!.id },
     })
     expect(second.map((a) => a.id)).toEqual([1])
     expect(listActivities(db, { athleteId: 2, limit: 10 }).map((a) => a.id)).toEqual([99])
@@ -182,6 +186,58 @@ describe('streams repo', () => {
     upsertActivity(db, activity(2, 2000))
     saveStreams(db, 2, { time: [0], distance: [0], altitude: [1], latlng: null }, '2026-01-01')
     expect(getStreams(db, 2)?.latlng).toBeNull()
+  })
+})
+
+describe('sorting and badges', () => {
+  const withMetric = (id: number, epoch: number, vspeed: number | null, gain: number) =>
+    activity(id, epoch, { ascentMeanVSpeed: vspeed, totalElevationGainM: gain })
+
+  it('sorts by stored ascent speed with NULL metrics last and a working cursor', () => {
+    const db = testDb()
+    upsertActivity(db, withMetric(1, 1000, 500, 100))
+    upsertActivity(db, withMetric(2, 2000, 900, 50))
+    upsertActivity(db, withMetric(3, 3000, null, 800)) // not computed yet
+    upsertActivity(db, withMetric(4, 4000, 700, 200))
+
+    const page1 = listActivities(db, { athleteId: 1, limit: 2, sort: 'ascentSpeed' })
+    expect(page1.map((a) => a.id)).toEqual([2, 4])
+    const page2 = listActivities(db, {
+      athleteId: 1,
+      limit: 2,
+      sort: 'ascentSpeed',
+      cursor: { value: page1[1]!.ascentMeanVSpeed!, id: page1[1]!.id },
+    })
+    expect(page2.map((a) => a.id)).toEqual([1, 3])
+  })
+
+  it('sorts by total elevation gain', () => {
+    const db = testDb()
+    upsertActivity(db, withMetric(1, 1000, 500, 100))
+    upsertActivity(db, withMetric(2, 2000, 900, 50))
+    upsertActivity(db, withMetric(3, 3000, null, 800))
+    expect(listActivities(db, { athleteId: 1, limit: 10, sort: 'elevation' }).map((a) => a.id)) //
+      .toEqual([3, 1, 2])
+  })
+
+  it('ranks top-3 by speed (metric > 0 only) and by elevation, per athlete', () => {
+    const db = testDb()
+    upsertActivity(db, withMetric(1, 1000, 500, 100))
+    upsertActivity(db, withMetric(2, 2000, 900, 50))
+    upsertActivity(db, withMetric(3, 3000, 0, 800)) // no qualifying ascent
+    upsertActivity(db, withMetric(4, 4000, 700, 200))
+    upsertActivity(db, withMetric(5, 5000, 600, 300))
+    upsertActivity(db, activity(6, 6000, { athleteId: 2, ascentMeanVSpeed: 9999 }))
+
+    expect(topByAscentSpeed(db, 1, 3)).toEqual([2, 4, 5])
+    expect(topByElevation(db, 1, 3)).toEqual([3, 5, 4])
+  })
+
+  it('round-trips cursors through cursorFor/parseCursor', () => {
+    const row = activity(7, 1000, { ascentMeanVSpeed: 612.5 })
+    expect(parseCursor(cursorFor('ascentSpeed', row))).toEqual({ value: 612.5, id: 7 })
+    expect(parseCursor(cursorFor('date', row))).toEqual({ value: 1000, id: 7 })
+    expect(parseCursor('garbage')).toBeNull()
   })
 })
 

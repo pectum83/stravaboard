@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { ActivitySummary } from '@stravaboard/shared'
-import { api } from '../api/client'
+import type { ActivityBadges, ActivitySummary } from '@stravaboard/shared'
+import { api, type ActivitySort } from '../api/client'
 
 const PAGE_SIZE = 50
 
@@ -17,6 +17,8 @@ export interface ActivityFilters {
 
 export const EMPTY_FILTERS: ActivityFilters = { q: '', from: '', to: '', sportType: '' }
 
+const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [] }
+
 export const useActivitiesStore = defineStore('activities', () => {
   const activities = ref<ActivitySummary[]>([])
   const selectedId = ref<number | null>(null)
@@ -25,22 +27,35 @@ export const useActivitiesStore = defineStore('activities', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const filters = ref<ActivityFilters>({ ...EMPTY_FILTERS })
+  const sort = ref<ActivitySort>('date')
   const sportTypes = ref<string[]>([])
+  const badges = ref<ActivityBadges>(NO_BADGES)
 
   async function loadFirstPage(): Promise<void> {
     activities.value = []
     nextBefore.value = undefined
     hasMore.value = true
-    await Promise.all([loadMore(), loadSportTypes()])
+    await Promise.all([loadMore(), loadSportTypes(), loadBadges()])
   }
 
-  /** Merge a filter change and reload the list from the first page. */
-  async function setFilters(patch: Partial<ActivityFilters>): Promise<void> {
-    filters.value = { ...filters.value, ...patch }
+  /** Reset the list and reload the first page (shared by filter and sort changes). */
+  async function reload(): Promise<void> {
     activities.value = []
     nextBefore.value = undefined
     hasMore.value = true
     await loadMore()
+  }
+
+  /** Merge a filter change and reload from the first page. */
+  async function setFilters(patch: Partial<ActivityFilters>): Promise<void> {
+    filters.value = { ...filters.value, ...patch }
+    await reload()
+  }
+
+  async function setSort(next: ActivitySort): Promise<void> {
+    if (sort.value === next) return
+    sort.value = next
+    await reload()
   }
 
   async function loadMore(): Promise<void> {
@@ -52,6 +67,7 @@ export const useActivitiesStore = defineStore('activities', () => {
       const page = await api.activities({
         limit: PAGE_SIZE,
         before: nextBefore.value,
+        sort: sort.value,
         ...(f.q.trim() !== '' ? { q: f.q.trim() } : {}),
         ...(f.from !== '' ? { from: f.from } : {}),
         ...(f.to !== '' ? { to: f.to } : {}),
@@ -75,6 +91,14 @@ export const useActivitiesStore = defineStore('activities', () => {
     }
   }
 
+  async function loadBadges(): Promise<void> {
+    try {
+      badges.value = await api.badges()
+    } catch {
+      // Badges are decorative; degrade to none.
+    }
+  }
+
   function select(id: number): void {
     selectedId.value = id
   }
@@ -83,6 +107,8 @@ export const useActivitiesStore = defineStore('activities', () => {
   async function refreshActivity(id: number): Promise<void> {
     const updated = await api.refreshActivity(id)
     activities.value = activities.value.map((a) => (a.id === id ? updated : a))
+    // Ranks may have shifted (name/crop/streams changed the metric).
+    await loadBadges()
   }
 
   return {
@@ -92,10 +118,13 @@ export const useActivitiesStore = defineStore('activities', () => {
     loading,
     error,
     filters,
+    sort,
     sportTypes,
+    badges,
     loadFirstPage,
     loadMore,
     setFilters,
+    setSort,
     select,
     refreshActivity,
   }

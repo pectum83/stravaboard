@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { reactive, watch } from 'vue'
 import type { Settings } from '@stravaboard/shared'
 import { useSettingsStore } from '../stores/settings'
 
@@ -35,12 +35,30 @@ const fields: Field[] = [
   { key: 'slopeWindowM', label: 'Slope window', unit: 'm', min: 10, max: 2000 },
 ]
 
-const values = computed(() => store.settings)
+// Local draft text per field, so typing (clearing, retyping) never fights a
+// controlled value. Nothing is clamped or saved until the field is committed
+// (blur or Enter). Kept in sync when the store changes elsewhere (load, reset).
+const drafts = reactive<Record<string, string>>({})
+watch(
+  () => store.settings,
+  (settings) => {
+    for (const field of fields) drafts[field.key] = String(settings[field.key])
+  },
+  { immediate: true, deep: true },
+)
 
-function onInput(field: Field, event: Event): void {
-  const raw = Number((event.target as HTMLInputElement).value)
-  if (!Number.isFinite(raw)) return
+/** Clamp, persist, and normalise the field's text on blur or Enter. */
+function commit(field: Field): void {
+  // v-model coerces a valid number input to a number, but leaves an empty or
+  // half-typed field as a string — handle both.
+  const text = String(drafts[field.key] ?? '').trim()
+  const raw = Number(text)
+  if (text === '' || !Number.isFinite(raw)) {
+    drafts[field.key] = String(store.settings[field.key]) // revert empty/garbage
+    return
+  }
   const clamped = Math.min(field.max, Math.max(field.min, raw))
+  drafts[field.key] = String(clamped)
   store.update({ [field.key]: clamped })
 }
 </script>
@@ -52,11 +70,12 @@ function onInput(field: Field, event: Event): void {
       <label v-for="field in fields" :key="field.key">
         <span>{{ field.label }} ({{ field.unit }})</span>
         <input
+          v-model="drafts[field.key]"
           type="number"
           :min="field.min"
           :max="field.max"
-          :value="values[field.key]"
-          @input="onInput(field, $event)"
+          @change="commit(field)"
+          @keydown.enter="commit(field)"
         />
       </label>
     </div>

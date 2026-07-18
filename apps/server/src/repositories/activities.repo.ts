@@ -7,6 +7,7 @@ export interface ActivityRow {
   id: number
   /** Owner (Strava athlete id). */
   athleteId: number
+  ascentMeanVSpeed?: number | null
   name: string
   sportType: string
   startDate: string
@@ -36,6 +37,11 @@ export function upsertActivitySummary(db: Db, row: ActivityRow): void {
     .run()
 }
 
+export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation'
+
+/** Metric value NULL sorts last: activities without data rank below a 0. */
+const METRIC_NULL = -1
+
 export interface ActivityFilter {
   /** Name substring (SQLite LIKE — case-insensitive for ASCII only). */
   q?: string
@@ -46,22 +52,63 @@ export interface ActivityFilter {
   sportType?: string
 }
 
+/** Sort column expression; the metric coalesces NULL below every real value. */
+function sortValueExpr(sort: ActivitySort) {
+  switch (sort) {
+    case 'date':
+      return sql<number>`${activities.startDateEpoch}`
+    case 'ascentSpeed':
+      return sql<number>`COALESCE(${activities.ascentMeanVSpeed}, ${METRIC_NULL})`
+    case 'elevation':
+      return sql<number>`${activities.totalElevationGainM}`
+  }
+}
+
+/** Opaque keyset cursor `<sortValue>:<id>` for the next page under a sort. */
+export function cursorFor(sort: ActivitySort, row: ActivityRow): string {
+  const value =
+    sort === 'date'
+      ? row.startDateEpoch
+      : sort === 'elevation'
+        ? row.totalElevationGainM
+        : (row.ascentMeanVSpeed ?? METRIC_NULL)
+  return `${value}:${row.id}`
+}
+
+/** Parse a cursor produced by `cursorFor`; null when malformed. */
+export function parseCursor(before: string): { value: number; id: number } | null {
+  const m = /^(-?\d+(?:\.\d+)?):(\d+)$/.exec(before)
+  if (!m) return null
+  return { value: Number(m[1]), id: Number(m[2]) }
+}
+
 /**
- * Page of activities, newest first; `beforeEpoch` is an exclusive keyset
- * cursor. Filters are stable predicates, so they compose with the cursor.
+ * Page of activities under a sort (descending, id-desc tiebreak); `cursor`
+ * is an exclusive composite keyset cursor from `cursorFor`. Filters are
+ * stable predicates, so they compose with the cursor.
  */
 export function listActivities(
   db: Db,
   {
     athleteId,
     limit,
-    beforeEpoch,
+    cursor,
     filter = {},
-  }: { athleteId: number; limit: number; beforeEpoch?: number; filter?: ActivityFilter },
+    sort = 'date',
+  }: {
+    athleteId: number
+    limit: number
+    cursor?: { value: number; id: number }
+    filter?: ActivityFilter
+    sort?: ActivitySort
+  },
 ): ActivityRow[] {
+  const value = sortValueExpr(sort)
   const conditions = [
     eq(activities.athleteId, athleteId),
-    beforeEpoch === undefined ? undefined : lt(activities.startDateEpoch, beforeEpoch),
+    cursor === undefined
+      ? undefined
+      : sql`(${value} < ${cursor.value} OR (${value} = ${cursor.value} AND ${activities.id} < ${cursor.id}))`,
     filter.q === undefined
       ? undefined
       : sql`${activities.name} LIKE ${`%${escapeLike(filter.q)}%`} ESCAPE '\\'`,
@@ -74,10 +121,60 @@ export function listActivities(
   return db
     .select()
     .from(activities)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(activities.startDateEpoch), desc(activities.id))
+    .where(and(...conditions))
+    .orderBy(sql`${value} DESC`, desc(activities.id))
     .limit(limit)
     .all()
+}
+
+/** Top activity ids by stored ascent mean speed (positive metric only). */
+export function topByAscentSpeed(db: Db, athleteId: number, count: number): number[] {
+  return db
+    .select({ id: activities.id })
+    .from(activities)
+    .where(and(eq(activities.athleteId, athleteId), sql`${activities.ascentMeanVSpeed} > 0`))
+    .orderBy(sql`${activities.ascentMeanVSpeed} DESC`, desc(activities.id))
+    .limit(count)
+    .all()
+    .map((r) => r.id)
+}
+
+/** Top activity ids by total elevation gain (positive only). */
+export function topByElevation(db: Db, athleteId: number, count: number): number[] {
+  return db
+    .select({ id: activities.id })
+    .from(activities)
+    .where(and(eq(activities.athleteId, athleteId), sql`${activities.totalElevationGainM} > 0`))
+    .orderBy(desc(activities.totalElevationGainM), desc(activities.id))
+    .limit(count)
+    .all()
+    .map((r) => r.id)
+}
+
+/** Store the computed sort/badge metric for one activity. */
+export function setAscentMeanVSpeed(db: Db, id: number, value: number | null): void {
+  db.update(activities).set({ ascentMeanVSpeed: value }).where(eq(activities.id, id)).run()
+}
+
+/**
+ * Athlete's done activities with streams whose metric was never computed
+ * (NULL) — the local metric backfill set. Bounded by `limit` per pass.
+ */
+export function listMissingMetrics(db: Db, athleteId: number, limit: number): number[] {
+  return db
+    .select({ id: activities.id })
+    .from(activities)
+    .innerJoin(activityStreams, eq(activityStreams.activityId, activities.id))
+    .where(
+      and(
+        eq(activities.athleteId, athleteId),
+        eq(activities.streamsStatus, 'done'),
+        isNull(activities.ascentMeanVSpeed),
+      ),
+    )
+    .limit(limit)
+    .all()
+    .map((r) => r.id)
 }
 
 /** Escape LIKE wildcards so user input matches literally. */
@@ -177,6 +274,7 @@ export function countStreamsMissingLatlng(db: Db, athleteId: number): number {
 export function toSummary(row: ActivityRow): ActivitySummary {
   return {
     id: row.id,
+    ascentMeanVSpeed: row.ascentMeanVSpeed ?? null,
     name: row.name,
     sportType: row.sportType,
     startDate: row.startDate,

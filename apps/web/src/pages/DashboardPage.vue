@@ -112,7 +112,9 @@ onMounted(async () => {
           <ActivityFilters
             :filters="activitiesStore.filters"
             :sport-types="activitiesStore.sportTypes"
+            :sort="activitiesStore.sort"
             @update="activitiesStore.setFilters"
+            @update:sort="activitiesStore.setSort"
           />
           <div class="list-wrap">
             <ActivityList
@@ -120,6 +122,7 @@ onMounted(async () => {
               :selected-id="selectedId"
               :has-more="hasMore"
               :loading="loading"
+              :badges="activitiesStore.badges"
               @select="activitiesStore.select"
               @load-more="activitiesStore.loadMore"
             />

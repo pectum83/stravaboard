@@ -6,6 +6,8 @@ test.beforeEach(async ({ page }) => {
   await stubMapTiles(page)
   await login(page)
   await expect(page.locator('button.item')).toHaveCount(3)
+  // Filters live in a collapsible section — open it before interacting.
+  await page.locator('.filters summary').click()
 })
 
 test('filters the list by name, sport and date range, and clears', async ({ page }) => {

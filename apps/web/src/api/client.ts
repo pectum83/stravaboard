@@ -1,11 +1,14 @@
 import type {
   ActivitiesPage,
+  ActivityBadges,
   ActivityStreams,
   ActivitySummary,
   AuthStatus,
   Settings,
   SyncStatus,
 } from '@stravaboard/shared'
+
+export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -27,6 +30,7 @@ export class ApiError extends Error {
 export interface ActivityListParams {
   limit?: number
   before?: string
+  sort?: ActivitySort
   q?: string
   from?: string
   to?: string
@@ -40,6 +44,7 @@ export const api = {
     const q = new URLSearchParams()
     if (params.limit) q.set('limit', String(params.limit))
     if (params.before) q.set('before', params.before)
+    if (params.sort && params.sort !== 'date') q.set('sort', params.sort)
     if (params.q) q.set('q', params.q)
     if (params.from) q.set('from', params.from)
     if (params.to) q.set('to', params.to)
@@ -48,6 +53,7 @@ export const api = {
     return request<ActivitiesPage>(`/api/activities${qs ? `?${qs}` : ''}`)
   },
   sportTypes: () => request<string[]>('/api/activities/sport-types'),
+  badges: () => request<ActivityBadges>('/api/activities/badges'),
   refreshActivity: (activityId: number) =>
     request<ActivitySummary>(`/api/activities/${activityId}/refresh`, { method: 'POST' }),
   config: () => request<{ maptilerKey: string | null }>('/api/config'),

@@ -8,6 +8,7 @@ vi.mock('../api/client', () => ({
   api: {
     activities: vi.fn(),
     sportTypes: vi.fn(),
+    badges: vi.fn(),
     refreshActivity: vi.fn(),
   },
 }))
@@ -23,6 +24,7 @@ function summary(id: number, overrides: Partial<ActivitySummary> = {}): Activity
     elapsedTimeS: 3700,
     totalElevationGainM: 500,
     streamsStatus: 'done',
+    ascentMeanVSpeed: 600,
     ...overrides,
   }
 }
@@ -32,6 +34,7 @@ describe('activities store', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     vi.mocked(api.sportTypes).mockResolvedValue(['Run'])
+    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [], elevation: [] })
   })
 
   it('replaces the refreshed activity in place', async () => {
@@ -74,5 +77,21 @@ describe('activities store', () => {
     )
     expect(store.activities.map((a) => a.id)).toEqual([2])
     expect(store.hasMore).toBe(false)
+  })
+
+  it('reloads with the chosen sort and exposes badges', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [3, 1], elevation: [1] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+    expect(store.badges.ascentSpeed).toEqual([3, 1])
+
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(2)] })
+    await store.setSort('ascentSpeed')
+    expect(vi.mocked(api.activities)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'ascentSpeed', before: undefined }),
+    )
+    expect(store.sort).toBe('ascentSpeed')
+    expect(store.activities.map((a) => a.id)).toEqual([2])
   })
 })

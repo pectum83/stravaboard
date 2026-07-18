@@ -1,11 +1,13 @@
-import type { ActivityStreams, SyncStatus } from '@stravaboard/shared'
+import { activityAscentMean, type ActivityStreams, type SyncStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
 import {
   countPendingStreams,
   countStreamsMissingLatlng,
   getActivity,
+  listMissingMetrics,
   listPendingStreams,
   listStreamsMissingLatlng,
+  setAscentMeanVSpeed,
   setStreamsStatus,
   upsertActivitySummary,
   type ActivityRow,
@@ -119,7 +121,7 @@ export class SyncService {
     upsertActivitySummary(this.db, toRow(athleteId, detail))
     try {
       const set = await this.client.getStreams(athleteId, id)
-      saveStreams(this.db, id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
+      this.storeStreams(id, toStoredStreams(set))
       setStreamsStatus(this.db, id, 'done')
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err
@@ -152,6 +154,7 @@ export class SyncService {
     saveSyncState(this.db, athleteId, { status: 'syncing', error: null })
 
     try {
+      this.computeMissingMetrics(athleteId) // local only, no API budget
       await this.retryingOnRateLimit(athleteId, () => this.fetchNewSummaries(athleteId))
       await this.retryingOnRateLimit(athleteId, () => this.fetchPendingStreams(athleteId))
       await this.retryingOnRateLimit(athleteId, () => this.backfillLatlng(athleteId))
@@ -245,10 +248,34 @@ export class SyncService {
     }
   }
 
+  /** Persist streams and refresh the derived sort/badge metric together. */
+  private storeStreams(activityId: number, streams: ActivityStreams): void {
+    saveStreams(this.db, activityId, streams, new Date(this.nowMs()).toISOString())
+    // ?? 0: "computed, nothing rankable" — NULL must stay reserved for
+    // "not computed yet" or the metric backfill would never terminate.
+    setAscentMeanVSpeed(this.db, activityId, activityAscentMean(streams) ?? 0)
+  }
+
+  /**
+   * One-time local pass: compute the stored metric for activities whose
+   * streams predate the ascent_mean_vspeed column. Pure CPU, no API calls.
+   */
+  private computeMissingMetrics(athleteId: number): void {
+    for (;;) {
+      const ids = listMissingMetrics(this.db, athleteId, 200)
+      if (ids.length === 0) return
+      this.log(`computing ascent metrics for ${ids.length} activities`)
+      for (const id of ids) {
+        const streams = getStreams(this.db, id)
+        setAscentMeanVSpeed(this.db, id, streams ? (activityAscentMean(streams) ?? 0) : 0)
+      }
+    }
+  }
+
   private async fetchStreamsFor(activity: ActivityRow): Promise<void> {
     try {
       const set = await this.client.getStreams(activity.athleteId, activity.id)
-      saveStreams(this.db, activity.id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
+      this.storeStreams(activity.id, toStoredStreams(set))
       setStreamsStatus(this.db, activity.id, 'done')
     } catch (err) {
       // Manual/indoor activities have no streams; that is a terminal state, not an error.
@@ -284,17 +311,12 @@ export class SyncService {
   private async refetchStreamsFor(activity: ActivityRow): Promise<void> {
     try {
       const set = await this.client.getStreams(activity.athleteId, activity.id)
-      saveStreams(this.db, activity.id, toStoredStreams(set), new Date(this.nowMs()).toISOString())
+      this.storeStreams(activity.id, toStoredStreams(set))
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err
       const existing = getStreams(this.db, activity.id)
       if (existing) {
-        saveStreams(
-          this.db,
-          activity.id,
-          { ...existing, latlng: [] },
-          new Date(this.nowMs()).toISOString(),
-        )
+        this.storeStreams(activity.id, { ...existing, latlng: [] })
       }
     }
   }

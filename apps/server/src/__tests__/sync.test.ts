@@ -127,6 +127,33 @@ describe('SyncService', () => {
     expect(listActivities(db, { athleteId: 1, limit: 10 })).toHaveLength(0)
   })
 
+  it('stores the ascent-mean metric when streams arrive and backfills missing ones', async () => {
+    const db = connectedDb()
+    const { sync } = makeSync(db, { activities: [A1] })
+    await runSync(sync)
+    // simpleStreams climbs 3 m over 3 s — below minGain, so metric = 0 (computed).
+    expect(getActivity(db, 101)?.ascentMeanVSpeed).toBe(0)
+
+    // Legacy row: streams stored before the metric column existed.
+    upsertActivity(db, { ...makeRow(300, '2025-01-01T08:00:00Z'), streamsStatus: 'done' })
+    const time = [],
+      distance = [],
+      altitude = []
+    for (let t = 0; t <= 600; t++) {
+      time.push(t)
+      distance.push(t * 6)
+      altitude.push(100 + t * 0.5)
+    }
+    saveStreams(db, 300, { time, distance, altitude, latlng: [] }, '2025')
+    expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeNull()
+
+    const again = makeSync(db, { activities: [] })
+    await runSync(again.sync)
+    // 300 m gain over 600 s = 1800 m/h, computed locally without API calls.
+    expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeCloseTo(1800, 4)
+    expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
+  })
+
   it('marks activities without streams as none and keeps going', async () => {
     const db = connectedDb()
     const { sync } = makeSync(db, { activities: [A1, A2], noStreams: [101] })
