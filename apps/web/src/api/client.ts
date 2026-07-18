@@ -37,6 +37,9 @@ export interface ActivityListParams {
   sportType?: string
 }
 
+/** Badge rankings take the list's filter, without paging or sort. */
+export type ActivityBadgeParams = Pick<ActivityListParams, 'q' | 'from' | 'to' | 'sportType'>
+
 export const api = {
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   logout: () => request<{ loggedOut: boolean }>('/api/auth/logout', { method: 'POST' }),
@@ -53,7 +56,15 @@ export const api = {
     return request<ActivitiesPage>(`/api/activities${qs ? `?${qs}` : ''}`)
   },
   sportTypes: () => request<string[]>('/api/activities/sport-types'),
-  badges: () => request<ActivityBadges>('/api/activities/badges'),
+  badges: (params: ActivityBadgeParams = {}) => {
+    const q = new URLSearchParams()
+    if (params.q) q.set('q', params.q)
+    if (params.from) q.set('from', params.from)
+    if (params.to) q.set('to', params.to)
+    if (params.sportType) q.set('sportType', params.sportType)
+    const qs = q.toString()
+    return request<ActivityBadges>(`/api/activities/badges${qs ? `?${qs}` : ''}`)
+  },
   refreshActivity: (activityId: number) =>
     request<ActivitySummary>(`/api/activities/${activityId}/refresh`, { method: 'POST' }),
   config: () => request<{ maptilerKey: string | null }>('/api/config'),

@@ -3,6 +3,7 @@ import type { ActivitiesPage } from '@stravaboard/shared'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import {
+  type ActivityFilter,
   cursorFor,
   getActivity,
   listActivities,
@@ -29,7 +30,26 @@ const listQuerySchema = z.object({
   sportType: z.string().min(1).max(50).optional(),
 })
 
+/** Badge rankings take the same filter as the list (minus paging/sort). */
+const badgeQuerySchema = listQuerySchema.pick({ q: true, from: true, to: true, sportType: true })
+
 const dayToEpoch = (day: string): number => Date.parse(`${day}T00:00:00Z`) / 1000
+
+/** Build the repository filter from validated query fields. */
+function toFilter(f: {
+  q?: string
+  from?: string
+  to?: string
+  sportType?: string
+}): ActivityFilter {
+  return {
+    q: f.q,
+    fromEpoch: f.from === undefined ? undefined : dayToEpoch(f.from),
+    // `to` day is inclusive for the user: bound by the next midnight.
+    toEpochExclusive: f.to === undefined ? undefined : dayToEpoch(f.to) + 86_400,
+    sportType: f.sportType,
+  }
+}
 
 export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncService): void {
   app.get('/api/activities', async (req, reply) => {
@@ -47,13 +67,7 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
       limit,
       cursor: cursor ?? undefined,
       sort,
-      filter: {
-        q,
-        fromEpoch: from === undefined ? undefined : dayToEpoch(from),
-        // `to` day is inclusive for the user: bound by the next midnight.
-        toEpochExclusive: to === undefined ? undefined : dayToEpoch(to) + 86_400,
-        sportType,
-      },
+      filter: toFilter({ q, from, to, sportType }),
     })
     const page: ActivitiesPage = {
       activities: rows.map(toSummary),
@@ -62,11 +76,19 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     return page
   })
 
-  // Top-3 activity ids per ranking — the list decorates them with badges.
-  app.get('/api/activities/badges', async (req) => ({
-    ascentSpeed: topByAscentSpeed(db, req.athleteId, 3),
-    elevation: topByElevation(db, req.athleteId, 3),
-  }))
+  // Top-3 activity ids per ranking, within the current filter — the list
+  // decorates them with badges, so a filtered view badges its own best.
+  app.get('/api/activities/badges', async (req, reply) => {
+    const parsed = badgeQuerySchema.safeParse(req.query)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid query', details: parsed.error.issues })
+    }
+    const filter = toFilter(parsed.data)
+    return {
+      ascentSpeed: topByAscentSpeed(db, req.athleteId, 3, filter),
+      elevation: topByElevation(db, req.athleteId, 3, filter),
+    }
+  })
 
   app.get('/api/activities/sport-types', async (req) => listSportTypes(db, req.athleteId))
 

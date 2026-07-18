@@ -15,7 +15,8 @@ controls wrap) and the chart renders in compact mode (see buildChartOptions).
 - `api/client.ts` — typed fetch wrappers: `authStatus`, `activities(params)`
   (`ActivityListParams {limit, before, sort, q, from, to, sportType}`; `sort:
 ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
-  `badges()` (`ActivityBadges`), `sportTypes()`, `refreshActivity(id)` (POST),
+  `badges(params?)` (`ActivityBadgeParams` = the list filter minus paging/sort →
+  `ActivityBadges`), `sportTypes()`, `refreshActivity(id)` (POST),
   `config()` (`{maptilerKey}`), `streams(id)`, `settings`/`saveSettings`,
   `startSync`, `syncStatus`. Errors → `ApiError(status)`.
 - `stores/settings.ts` (Pinia setup store) — `settings` seeded from
@@ -28,9 +29,16 @@ ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
     `loadMore()` sends only non-empty filters + the active sort, `sportTypes`
     loaded with the first page, `select(id)`.
   - **sort & badges**: `sort` ref (default `'date'`), `setSort(next)` resets &
-    reloads; `badges` ref (`NO_BADGES` default), `loadBadges()`. `loadFirstPage`
-    loads badges too; `refreshActivity` reloads badges (a reload can change a
-    ranking). `reload()` re-runs the current query in place.
+    reloads; `badges` ref (`NO_BADGES` default), `loadBadges()` sends the active
+    filter (`activeFilterParams()`) so badges rank only the visible set.
+    `loadFirstPage` loads badges too; `setFilters` reloads list + badges;
+    `refreshActivity` reloads badges (a reload can change a ranking). `reload()`
+    re-runs the current query in place.
+  - **default sport**: `loadFirstPage` loads sport types first, then opens on
+    `DEFAULT_SPORT_TYPE = 'Hike'` when it's among them and the user hasn't
+    touched the sport filter (`sportTypeTouched`, set by any `setFilters` sport
+    change incl. Clear). No hikes → stays unfiltered; the choice survives
+    re-syncs.
 - `composables/useStreams.ts` — watches selected id, module-level
   `Map<number, ActivityStreams>` cache, 404 → `missing`; returns `reload()`
   which evicts the current id from the cache and refetches.

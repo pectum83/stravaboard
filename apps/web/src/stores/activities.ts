@@ -19,6 +19,9 @@ export const EMPTY_FILTERS: ActivityFilters = { q: '', from: '', to: '', sportTy
 
 const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [] }
 
+/** Sport the list opens on, when the athlete has any such activities. */
+const DEFAULT_SPORT_TYPE = 'Hike'
+
 export const useActivitiesStore = defineStore('activities', () => {
   const activities = ref<ActivitySummary[]>([])
   const selectedId = ref<number | null>(null)
@@ -30,12 +33,35 @@ export const useActivitiesStore = defineStore('activities', () => {
   const sort = ref<ActivitySort>('date')
   const sportTypes = ref<string[]>([])
   const badges = ref<ActivityBadges>(NO_BADGES)
+  // Once the user picks a sport type (or clears filters) we stop forcing the
+  // Hike default, so their choice survives re-syncs.
+  const sportTypeTouched = ref(false)
+
+  /** Non-empty filter fields, as API query params. */
+  function activeFilterParams() {
+    const f = filters.value
+    return {
+      ...(f.q.trim() !== '' ? { q: f.q.trim() } : {}),
+      ...(f.from !== '' ? { from: f.from } : {}),
+      ...(f.to !== '' ? { to: f.to } : {}),
+      ...(f.sportType !== '' ? { sportType: f.sportType } : {}),
+    }
+  }
 
   async function loadFirstPage(): Promise<void> {
     activities.value = []
     nextBefore.value = undefined
     hasMore.value = true
-    await Promise.all([loadMore(), loadSportTypes(), loadBadges()])
+    // Sport types first: the Hike default only applies when it's available.
+    await loadSportTypes()
+    if (
+      !sportTypeTouched.value &&
+      filters.value.sportType === '' &&
+      sportTypes.value.includes(DEFAULT_SPORT_TYPE)
+    ) {
+      filters.value.sportType = DEFAULT_SPORT_TYPE
+    }
+    await Promise.all([loadMore(), loadBadges()])
   }
 
   /** Reset the list and reload the first page (shared by filter and sort changes). */
@@ -46,10 +72,12 @@ export const useActivitiesStore = defineStore('activities', () => {
     await loadMore()
   }
 
-  /** Merge a filter change and reload from the first page. */
+  /** Merge a filter change and reload the list and badges from the first page. */
   async function setFilters(patch: Partial<ActivityFilters>): Promise<void> {
+    // A sport-type change (including Clear) is a deliberate choice — respect it.
+    if (patch.sportType !== undefined) sportTypeTouched.value = true
     filters.value = { ...filters.value, ...patch }
-    await reload()
+    await Promise.all([reload(), loadBadges()])
   }
 
   async function setSort(next: ActivitySort): Promise<void> {
@@ -62,16 +90,12 @@ export const useActivitiesStore = defineStore('activities', () => {
     if (loading.value || !hasMore.value) return
     loading.value = true
     error.value = null
-    const f = filters.value
     try {
       const page = await api.activities({
         limit: PAGE_SIZE,
         before: nextBefore.value,
         sort: sort.value,
-        ...(f.q.trim() !== '' ? { q: f.q.trim() } : {}),
-        ...(f.from !== '' ? { from: f.from } : {}),
-        ...(f.to !== '' ? { to: f.to } : {}),
-        ...(f.sportType !== '' ? { sportType: f.sportType } : {}),
+        ...activeFilterParams(),
       })
       activities.value = [...activities.value, ...page.activities]
       nextBefore.value = page.nextBefore
@@ -93,7 +117,7 @@ export const useActivitiesStore = defineStore('activities', () => {
 
   async function loadBadges(): Promise<void> {
     try {
-      badges.value = await api.badges()
+      badges.value = await api.badges(activeFilterParams())
     } catch {
       // Badges are decorative; degrade to none.
     }

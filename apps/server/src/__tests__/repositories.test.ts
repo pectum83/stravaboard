@@ -121,11 +121,16 @@ describe('activities repo', () => {
     expect(listActivities(db, { athleteId: 2, limit: 10 }).map((a) => a.id)).toEqual([99])
   })
 
-  it('scopes sport types per athlete', () => {
+  it('scopes sport types per athlete and only lists analyzable (elevation) ones', () => {
     const db = testDb()
     upsertActivity(db, activity(1, 1000, { sportType: 'Run' }))
     upsertActivity(db, activity(2, 2000, { sportType: 'TrailRun', athleteId: 2 }))
-    expect(listSportTypes(db, 1)).toEqual(['Run'])
+    // A sport whose only activity has no elevation is hidden from the filter.
+    upsertActivity(db, activity(3, 3000, { sportType: 'Workout', totalElevationGainM: 0 }))
+    // Hike has one flat and one hilly activity → still analyzable, shown once.
+    upsertActivity(db, activity(4, 4000, { sportType: 'Hike', totalElevationGainM: 0 }))
+    upsertActivity(db, activity(5, 5000, { sportType: 'Hike', totalElevationGainM: 300 }))
+    expect(listSportTypes(db, 1)).toEqual(['Hike', 'Run'])
     expect(listSportTypes(db, 2)).toEqual(['TrailRun'])
   })
 
@@ -231,6 +236,19 @@ describe('sorting and badges', () => {
 
     expect(topByAscentSpeed(db, 1, 3)).toEqual([2, 4, 5])
     expect(topByElevation(db, 1, 3)).toEqual([3, 5, 4])
+  })
+
+  it('restricts badge rankings to the given filter', () => {
+    const db = testDb()
+    upsertActivity(db, withMetric(1, 1000, 500, 100)) // Run
+    upsertActivity(db, { ...withMetric(2, 2000, 900, 50), sportType: 'Hike' })
+    upsertActivity(db, { ...withMetric(3, 3000, 700, 800), sportType: 'Hike' })
+    upsertActivity(db, withMetric(4, 4000, 990, 200)) // Run, fastest overall
+
+    // Without a filter the fastest overall (4) leads; filtered to Hike it drops out.
+    expect(topByAscentSpeed(db, 1, 3)).toEqual([4, 2, 3])
+    expect(topByAscentSpeed(db, 1, 3, { sportType: 'Hike' })).toEqual([2, 3])
+    expect(topByElevation(db, 1, 3, { sportType: 'Hike' })).toEqual([3, 2])
   })
 
   it('round-trips cursors through cursorFor/parseCursor', () => {

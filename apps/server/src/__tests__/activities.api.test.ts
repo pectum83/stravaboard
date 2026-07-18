@@ -118,6 +118,20 @@ describe('activities API', () => {
     expect(res.json()).toEqual({ ascentSpeed: [2, 4, 5], elevation: [3, 5, 4] })
   })
 
+  it('restricts badges to the query filter', async () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000, { ascentMeanVSpeed: 900, sportType: 'Run' }))
+    upsertActivity(db, activity(2, 2000, { ascentMeanVSpeed: 500, sportType: 'Hike' }))
+    upsertActivity(db, activity(3, 3000, { ascentMeanVSpeed: 700, sportType: 'Hike' }))
+    const { app, cookies } = await appWithAthlete(db)
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/activities/badges?sportType=Hike',
+      cookies,
+    })
+    expect(res.json().ascentSpeed).toEqual([3, 2])
+  })
+
   it("never serves another athlete's activities or streams", async () => {
     const db = testDb()
     connectAthlete(db, 2)
@@ -223,11 +237,13 @@ describe('activities API', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('lists distinct sport types, sorted', async () => {
+  it('lists distinct analyzable sport types, sorted', async () => {
     const db = testDb()
     upsertActivity(db, activity(1, 1000, { sportType: 'TrailRun' }))
     upsertActivity(db, activity(2, 2000, { sportType: 'Run' }))
     upsertActivity(db, activity(3, 3000, { sportType: 'TrailRun' }))
+    // No-elevation sport (e.g. indoor trainer) is excluded from the filter.
+    upsertActivity(db, activity(4, 4000, { sportType: 'Workout', totalElevationGainM: 0 }))
     const { app, cookies } = await appWithAthlete(db)
     const res = await app.inject({ method: 'GET', url: '/api/activities/sport-types', cookies })
     expect(res.json()).toEqual(['Run', 'TrailRun'])

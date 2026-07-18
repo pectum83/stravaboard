@@ -24,9 +24,13 @@ above the chart. A **map panel** beside the chart shows the activity trace with
 streets / satellite / 3D-terrain layers, and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
 sport type (all gathered in a collapsible "Filters & sort" section) and
-**sorted** by date, best mean ascent speed, or total elevation gain. The three
-best activities in each ranking get 🥇🥈🥉 **badges** in the list; the mean
-ascent speed is shown on every activity. A **"↻ Reload from Strava"** button
+**sorted** by date, best mean ascent speed, or total elevation gain. The list
+opens on **Hike** by default when you have any hikes. The three best activities
+in each ranking get 🥇🥈🥉 **badges** — computed within the current filter, so a
+filtered view badges its own best — and the mean ascent speed is shown on every
+activity. The sport-type filter lists only **analyzable** sports (those with
+elevation data), so indoor/flat activity types don't clutter it. A
+**"↻ Reload from Strava"** button
 re-fetches the selected activity (data and streams) — use it after renaming,
 cropping or otherwise editing an activity on strava.com. The layout is
 responsive: on phones the

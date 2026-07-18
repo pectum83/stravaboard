@@ -58,9 +58,13 @@ applied automatically by `openDb`).
 = -1`, orders `value DESC, id DESC`; WHERE `value < c.value OR (value =
 c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   `parseCursor(str)`. `topByAscentSpeed`/`topByElevation` (metric/elevation > 0,
-  top-N ids for badges); `setAscentMeanVSpeed`, `listMissingMetrics` (rows with
-  streams but NULL metric, for local backfill). `listSportTypes` (distinct,
-  sorted), `listPendingStreams`/`count…`, `listStreamsMissingLatlng`/
+  top-N ids for badges, take an optional `ActivityFilter` so badges match the
+  visible list); `setAscentMeanVSpeed`, `listMissingMetrics` (rows with
+  streams but NULL metric, for local backfill). Filter predicates are shared by
+  the list and the rankings via `filterConditions(filter)`. `listSportTypes`
+  (distinct, sorted, **only analyzable types**: ≥1 activity with
+  `totalElevationGainM > 0`), `listPendingStreams`/`count…`,
+  `listStreamsMissingLatlng`/
   `countStreamsMissingLatlng` (streams_status='done' AND latlng IS NULL, oldest
   first), `toSummary` (includes `ascentMeanVSpeed`).
 - `streams.repo`: `saveStreams` (upsert; latlng null→SQL NULL, array→JSON),
@@ -90,10 +94,13 @@ c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   compose with it. `nextBefore` is built with `cursorFor` for the chosen sort.
   `from`/`to` are `YYYY-MM-DD`, `to` inclusive (implemented as `< to+86400`).
   Invalid query or malformed cursor → 400.
-- `GET /activities/badges` → `ActivityBadges {ascentSpeed:number[],
-elevation:number[]}` — top-3 activity ids per ranking (metric/elevation > 0),
-  for the 🥇🥈🥉 medals in the list.
-- `GET /activities/sport-types` → `string[]` distinct sorted.
+- `GET /activities/badges?q&from&to&sportType` → `ActivityBadges
+{ascentSpeed:number[], elevation:number[]}` — top-3 activity ids per ranking
+  (metric/elevation > 0) **within the same filter as the list**, so a filtered
+  view badges its own best. For the 🥇🥈🥉 medals in the list.
+- `GET /activities/sport-types` → `string[]` distinct sorted, **only analyzable
+  types** (≥1 activity with `totalElevationGainM > 0`); indoor/flat types
+  (trainer, weights, pool) never clutter the filter.
 - `POST /activities/:id/refresh` → re-fetches summary + streams from Strava
   (for activities edited/cropped on strava.com); 200 `ActivitySummary`,
   404 unknown locally OR gone from Strava (local data untouched), 429 with

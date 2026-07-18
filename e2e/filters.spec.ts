@@ -22,7 +22,9 @@ test('filters the list by name, sport and date range, and clears', async ({ page
   await page.getByRole('button', { name: 'Clear' }).click()
   await expect(items).toHaveCount(3)
 
-  // Sport filter
+  // Sport filter — only analyzable types appear (VirtualRide has no elevation).
+  const sportOptions = page.getByLabel('sport type').locator('option')
+  await expect(sportOptions).toHaveText(['All sports', 'Run', 'TrailRun'])
   await page.getByLabel('sport type').selectOption('Run')
   await expect(items).toHaveCount(1)
   await expect(items.first()).toContainText('Flat River Loop')
@@ -40,8 +42,9 @@ test('filters the list by name, sport and date range, and clears', async ({ page
 })
 
 test('filters compose: word plus sport with no match shows an empty list', async ({ page }) => {
+  // "Mountain" matches only the TrailRun; requiring sport type Run yields none.
   await page.getByLabel('filter by name').fill('Mountain')
-  await page.getByLabel('sport type').selectOption('VirtualRide')
+  await page.getByLabel('sport type').selectOption('Run')
   await expect(page.locator('button.item')).toHaveCount(0)
   await expect(page.getByText('No activities')).toBeVisible()
 })

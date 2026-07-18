@@ -94,4 +94,42 @@ describe('activities store', () => {
     expect(store.sort).toBe('ascentSpeed')
     expect(store.activities.map((a) => a.id)).toEqual([2])
   })
+
+  it('opens on Hike when the athlete has hikes, and filters list + badges by it', async () => {
+    vi.mocked(api.sportTypes).mockResolvedValue(['Hike', 'Run'])
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    expect(store.filters.sportType).toBe('Hike')
+    expect(vi.mocked(api.activities)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sportType: 'Hike' }),
+    )
+    expect(vi.mocked(api.badges)).toHaveBeenLastCalledWith({ sportType: 'Hike' })
+  })
+
+  it('leaves the filter unset when the athlete has no hikes', async () => {
+    vi.mocked(api.sportTypes).mockResolvedValue(['Run', 'Ride'])
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    expect(store.filters.sportType).toBe('')
+    expect(vi.mocked(api.badges)).toHaveBeenLastCalledWith({})
+  })
+
+  it('stops forcing the Hike default once the user clears the sport filter', async () => {
+    vi.mocked(api.sportTypes).mockResolvedValue(['Hike', 'Run'])
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+    expect(store.filters.sportType).toBe('Hike')
+
+    await store.setFilters({ sportType: '' }) // user chose "All sports"
+    expect(store.filters.sportType).toBe('')
+
+    // A later re-sync must not snap back to Hike.
+    await store.loadFirstPage()
+    expect(store.filters.sportType).toBe('')
+  })
 })

@@ -52,6 +52,20 @@ export interface ActivityFilter {
   sportType?: string
 }
 
+/** Predicate conditions shared by the list page and the badge rankings. */
+function filterConditions(filter: ActivityFilter) {
+  return [
+    filter.q === undefined
+      ? undefined
+      : sql`${activities.name} LIKE ${`%${escapeLike(filter.q)}%`} ESCAPE '\\'`,
+    filter.fromEpoch === undefined ? undefined : gte(activities.startDateEpoch, filter.fromEpoch),
+    filter.toEpochExclusive === undefined
+      ? undefined
+      : lt(activities.startDateEpoch, filter.toEpochExclusive),
+    filter.sportType === undefined ? undefined : eq(activities.sportType, filter.sportType),
+  ].filter((c) => c !== undefined)
+}
+
 /** Sort column expression; the metric coalesces NULL below every real value. */
 function sortValueExpr(sort: ActivitySort) {
   switch (sort) {
@@ -109,14 +123,7 @@ export function listActivities(
     cursor === undefined
       ? undefined
       : sql`(${value} < ${cursor.value} OR (${value} = ${cursor.value} AND ${activities.id} < ${cursor.id}))`,
-    filter.q === undefined
-      ? undefined
-      : sql`${activities.name} LIKE ${`%${escapeLike(filter.q)}%`} ESCAPE '\\'`,
-    filter.fromEpoch === undefined ? undefined : gte(activities.startDateEpoch, filter.fromEpoch),
-    filter.toEpochExclusive === undefined
-      ? undefined
-      : lt(activities.startDateEpoch, filter.toEpochExclusive),
-    filter.sportType === undefined ? undefined : eq(activities.sportType, filter.sportType),
+    ...filterConditions(filter),
   ].filter((c) => c !== undefined)
   return db
     .select()
@@ -127,24 +134,49 @@ export function listActivities(
     .all()
 }
 
-/** Top activity ids by stored ascent mean speed (positive metric only). */
-export function topByAscentSpeed(db: Db, athleteId: number, count: number): number[] {
+/**
+ * Top activity ids by stored ascent mean speed (positive metric only), within
+ * the same optional filter as the list so badges reflect the visible set.
+ */
+export function topByAscentSpeed(
+  db: Db,
+  athleteId: number,
+  count: number,
+  filter: ActivityFilter = {},
+): number[] {
   return db
     .select({ id: activities.id })
     .from(activities)
-    .where(and(eq(activities.athleteId, athleteId), sql`${activities.ascentMeanVSpeed} > 0`))
+    .where(
+      and(
+        eq(activities.athleteId, athleteId),
+        sql`${activities.ascentMeanVSpeed} > 0`,
+        ...filterConditions(filter),
+      ),
+    )
     .orderBy(sql`${activities.ascentMeanVSpeed} DESC`, desc(activities.id))
     .limit(count)
     .all()
     .map((r) => r.id)
 }
 
-/** Top activity ids by total elevation gain (positive only). */
-export function topByElevation(db: Db, athleteId: number, count: number): number[] {
+/** Top activity ids by total elevation gain (positive only), within `filter`. */
+export function topByElevation(
+  db: Db,
+  athleteId: number,
+  count: number,
+  filter: ActivityFilter = {},
+): number[] {
   return db
     .select({ id: activities.id })
     .from(activities)
-    .where(and(eq(activities.athleteId, athleteId), sql`${activities.totalElevationGainM} > 0`))
+    .where(
+      and(
+        eq(activities.athleteId, athleteId),
+        sql`${activities.totalElevationGainM} > 0`,
+        ...filterConditions(filter),
+      ),
+    )
     .orderBy(desc(activities.totalElevationGainM), desc(activities.id))
     .limit(count)
     .all()
@@ -182,12 +214,17 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`)
 }
 
-/** Distinct sport types of one athlete's activities, sorted. */
+/**
+ * Distinct sport types of one athlete's *analyzable* activities, sorted. A type
+ * only appears when it has at least one activity with elevation data
+ * (totalElevationGainM > 0) — indoor/no-elevation types (trainer, weights, pool)
+ * have nothing to rank or chart, so they never clutter the filter.
+ */
 export function listSportTypes(db: Db, athleteId: number): string[] {
   return db
     .selectDistinct({ sportType: activities.sportType })
     .from(activities)
-    .where(eq(activities.athleteId, athleteId))
+    .where(and(eq(activities.athleteId, athleteId), sql`${activities.totalElevationGainM} > 0`))
     .orderBy(asc(activities.sportType))
     .all()
     .map((r) => r.sportType)
