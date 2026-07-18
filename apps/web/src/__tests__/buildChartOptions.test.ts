@@ -31,6 +31,34 @@ function liftStreams(): ActivityStreams {
   return { time, distance, altitude, latlng: null }
 }
 
+/** A climb, a 60 s standstill (frozen position), then more climb — one pause. */
+function pausedStreams(): ActivityStreams {
+  const time: number[] = []
+  const distance: number[] = []
+  const altitude: number[] = []
+  let t = 0
+  let d = 0
+  let a = 500
+  const step = () => {
+    time.push(t)
+    distance.push(d)
+    altitude.push(a)
+    t++
+  }
+  for (let i = 0; i < 120; i++) {
+    step()
+    d += 6
+    a += 0.3
+  } // moving up to 720 m along
+  for (let i = 0; i < 60; i++) step() // 60 s standstill (position + altitude frozen)
+  for (let i = 0; i < 120; i++) {
+    step()
+    d += 6
+    a += 0.3
+  } // moving up again
+  return { time, distance, altitude, latlng: null }
+}
+
 function options(streams = climbStreams(), settings = DEFAULT_SETTINGS) {
   return buildChartOptions(computeVSpeedModel(streams, settings), settings)
 }
@@ -145,6 +173,30 @@ describe('buildChartOptions', () => {
     expect(names[idx + 1]).toBe('Slope (100m)')
     expect(withLift[idx]!.color).toBe('#898781')
     expect(withLift[idx]!.symbolSize).toBe(0)
+  })
+
+  it('marks each excluded pause on the baseline with its duration, only when pauses exist', () => {
+    // No pauses in the plain climb → no Pauses series.
+    expect((options().series as LineSeriesOption[]).map((s) => s.name)).not.toContain('Pauses')
+
+    const series = options(pausedStreams()).series as LineSeriesOption[]
+    const names = series.map((s) => s.name)
+    const idx = names.indexOf('Pauses')
+    expect(idx).toBeGreaterThan(-1)
+    // Inserted just before the slope series.
+    expect(names[idx + 1]).toBe('Slope (100m)')
+
+    const pauses = series[idx]!
+    expect(pauses.symbol).toBe('circle') // a round token
+    expect(pauses.symbolSize).toBe(20)
+    expect(pauses.color).toBe('#52514e') // neutral ink, not a categorical hue
+
+    const data = pauses.data as ({ value: [number, number]; label: { formatter: string } } | null)[]
+    const first = data[0] as { value: [number, number]; label: { formatter: string } }
+    expect(first.value[1]).toBe(0) // sits on the baseline
+    expect(first.value[0]).toBeCloseTo(0.72, 6) // pause at 720 m = 0.72 km
+    expect(Number(first.label.formatter)).toBeGreaterThanOrEqual(30) // duration in seconds
+    expect(data[1]).toBeNull() // points are null-separated (no connecting line)
   })
 
   it('keeps x values in kilometers', () => {

@@ -14,9 +14,10 @@ controls wrap) and the chart renders in compact mode (see buildChartOptions).
 
 - `api/client.ts` — typed fetch wrappers: `authStatus`, `activities(params)`
   (`ActivityListParams {limit, before, sort, q, from, to, sportType}`; `sort:
-ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
+ActivitySort 'date'|'ascentSpeed'|'elevation'|'descent'`, omitted when `'date'`),
   `badges(params?)` (`ActivityBadgeParams` = the list filter minus paging/sort →
-  `ActivityBadges`), `sportTypes()`, `refreshActivity(id)` (POST),
+  `ActivityBadges`), `stats(params?)` (same filter → `ActivityAggregate {count,
+totalAscentGainM}`), `sportTypes()`, `refreshActivity(id)` (POST),
   `config()` (`{maptilerKey}`), `streams(id)`, `settings`/`saveSettings`,
   `startSync`, `syncStatus`, `updateActivity(id, {name?, sportType?})` (PATCH).
   Errors → `ApiError(status)`.
@@ -29,12 +30,13 @@ ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
     `EMPTY_FILTERS`, `setFilters(patch)` merges then resets list & reloads,
     `loadMore()` sends only non-empty filters + the active sort, `sportTypes`
     loaded with the first page, `select(id)`.
-  - **sort & badges**: `sort` ref (default `'date'`), `setSort(next)` resets &
-    reloads; `badges` ref (`NO_BADGES` default), `loadBadges()` sends the active
-    filter (`activeFilterParams()`) so badges rank only the visible set.
-    `loadFirstPage` loads badges too; `setFilters` reloads list + badges;
-    `refreshActivity` reloads badges (a reload can change a ranking). `reload()`
-    re-runs the current query in place.
+  - **sort & badges & totals**: `sort` ref (default `'date'`), `setSort(next)`
+    resets & reloads; `badges` ref (`NO_BADGES` default) + `aggregate` ref
+    (`{count,totalAscentGainM}`, the whole-filter totals for the list header);
+    `loadBadges()`/`loadAggregate()` send the active filter (`activeFilterParams()`)
+    so both reflect only the visible set. `loadFirstPage`, `setFilters` and
+    `refreshActivity` reload badges **and** the aggregate (a reload can change a
+    ranking or the totals). `reload()` re-runs the current query in place.
   - **default sport**: `loadFirstPage` loads sport types first, then opens on
     `DEFAULT_SPORT_TYPE = 'Hike'` when it's among them and the user hasn't
     touched the sport filter (`sportTypeTouched`, set by any `setFilters` sport
@@ -58,21 +60,24 @@ slot shows the athlete name + "Log out" (POST logout then hard reload).
 
 ## DashboardPage
 
-Layout: `SyncStatusBar` on top; aside 320 px = `ActivityFilters` +
-`ActivityList` (in `.list-wrap`); main = `.controls` row (`SettingsPanel`,
-"↻ Reload from Strava" button when an activity is selected — store refresh +
-`reloadStreams()`, inline error — and `ActivityStats` pushed right) then
-`.visuals` flex row = `.chart-area` (flex 2,
-`VerticalSpeedChart`) + `.map-area` (flex 1, `MapPanel`, only when streams
-loaded). Computes `model = computeVSpeedModel(streams, settings)` once
-(null unless streams have altitude); `hoverIndex` ref bridges chart → map.
-Fetches `api.config()` on mount for the MapTiler key.
+Layout: `SyncStatusBar` on top; aside 320 px = `ActivityFilters` + a
+`.list-summary` line (`listSummary` computed: "N activities · D+ … m" from
+`store.aggregate`) + `ActivityList` (in `.list-wrap`); main = `.controls` row
+(`SettingsPanel`, "↻ Reload from Strava" button when an activity is selected —
+store refresh + `reloadStreams()`, inline error — and `ActivityStats` pushed
+right) then `.visuals` flex row = `.chart-area` (flex 2, `VerticalSpeedChart`) +
+`.map-area` (flex 1, `MapPanel`, only when streams loaded). Computes `model =
+computeVSpeedModel(streams, settings)` once (null unless streams have altitude);
+`hoverIndex` ref bridges chart → map. `ActivityStats` also receives the selected
+summary's distance/elapsed/moving. Fetches `api.config()` on mount for the
+MapTiler key.
 
 ## Chart
 
 - `chart/computeVSpeed.ts` — `computeVSpeedModel(streams, settings) →
 VSpeedModel {streams, instant, short, long, ascents, descents, excludedAscents,
-pauses, ascentStats, descentStats}`. Altitude is `despike`d once at entry
+pauses, pausedS, ascentStats, descentStats}` (`pausedS` = Σ pause durations, the
+  total excluded-pause time shown in the stats). Altitude is `despike`d once at entry
   (feeds every series/slope/segment); the instant series then runs
   `medianFilter(alt, 5)` on top. Ascents are split via `partitionSegments(...,
 settings.liftMaxVSpeed)`: lift/artefact climbs above the cap go to
@@ -84,7 +89,12 @@ EChartsOption`. 6 line series (7 when there are excluded climbs); colors =
   ascent, magenta `#e87ba4` descent, violet `#4a3aa7` slope — orange failed
   validation next to magenta; sub-3:1 colors are relieved by direct end-labels).
   A muted-grey (`#898781`) `Excluded (lift/artefact)` segment series is inserted
-  before slope **only when `model.excludedAscents` is non-empty**. The slope series is
+  before slope **only when `model.excludedAscents` is non-empty**. A `Pauses`
+  series (also only when `model.pauses` is non-empty) draws one round token per
+  excluded pause on the baseline (`[distance[startIndex]/1000, 0]`) with the
+  duration in seconds inside — an invisible width-0 line with null-separated
+  circle symbols (`symbolSize 20`), the neutral ink `#52514e` (not a categorical
+  hue), white inside-label. The slope series is
   dashed on a second right-side `%` yAxis (`yAxisIndex: 1`, `alignTicks` so
   zero lines match) with its own tooltip valueFormatter. Third param
   `{compact}` (phones): tighter grid, no series-name endLabels and no `m/h`
@@ -125,11 +135,13 @@ maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
 
 ## Other components (presentational)
 
-- `ActivityList.vue` — props activities/selectedId/hasMore/loading/**badges**,
-  emits select/loadMore. Shows `D+ <n> m` (`ascentGainM`, lift-excluded — not
-  Strava's raw total) and `↑ <n> m/h` (ascentMeanVSpeed) in the meta line
-  and 🥇🥈🥉 medals before the name via `badgeMap` (id → medals, with a `#N
-<ranking>` title). Empty text: "No activities yet.". **Inline edit**: a per-row
+- `ActivityList.vue` — props activities/selectedId/hasMore/loading/**badges**/
+  **sort**, emits select/loadMore. Shows `D+ <n> m` (`ascentGainM`, lift-excluded
+  — not Strava's raw total) in the meta line; the secondary metric follows the
+  `sort` prop — `· D- <n> m` (`descentLossM`) under the `descent` sort, else
+  `· ↑ <n> m/h` (ascentMeanVSpeed when present) — plus 🥇🥈🥉 medals before the
+  name via `badgeMap` (id → medals, with a `#N <ranking>` title). Empty text:
+  "No activities yet.". **Inline edit**: a per-row
   `.edit-toggle` pencil (revealed on row hover or when the row is selected —
   works on touch via selection) swaps the row for a `form.edit` (name input +
   sport `<select>` from `STRAVA_SPORT_TYPES`, Save/Cancel, Esc cancels). Save
@@ -141,8 +153,13 @@ maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
 "filters">`; the `<summary>` shows the active sort + "· filtered" note so it
   stays informative when closed. Search input debounced 300 ms in-component,
   date/sport/sort emit immediately, Clear button only when a filter is active.
-- `ActivityStats.vue` — props `{ascent, descent}: SegmentAggregate`; renders
-  `↑ 650 m · 612 m/h` / `—` when null.
+- `ActivityStats.vue` — props `{distanceM, elapsedS, movingTimeS, pausedS,
+ascent, descent}` (`ascent`/`descent` are `SegmentAggregate`). Renders the
+  activity length (`12.3 km`), total duration (`H:MM:SS elapsed (M:SS moving)`),
+  the total excluded-pause time (`⏸ M:SS`), then `↑ 650 m · 612 m/h` /
+  `—` (null) for each mean. `DashboardPage` renders it only when both `model` and
+  `selectedActivity` exist (distance/elapsed/moving come from the summary,
+  `pausedS` from the model).
 - `SettingsPanel.vue` — collapsible `<details>` of 8 number inputs (fields
   array). Each input is a **local draft** (`drafts` reactive, synced from the
   store via a deep watch); `commit(field)` on `@change` (blur) **and**

@@ -1,4 +1,4 @@
-import { activityAscentStats, type ActivityStreams, type SyncStatus } from '@stravaboard/shared'
+import { activityMetrics, type ActivityStreams, type SyncStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
 import {
   countPendingStreams,
@@ -7,7 +7,7 @@ import {
   listMissingMetrics,
   listPendingStreams,
   listStreamsMissingLatlng,
-  setAscentMetrics,
+  setActivityMetrics,
   setStreamsStatus,
   updateActivityFields,
   upsertActivitySummary,
@@ -273,22 +273,27 @@ export class SyncService {
   /** Persist streams and refresh the derived sort/badge metrics together. */
   private storeStreams(activityId: number, streams: ActivityStreams): void {
     saveStreams(this.db, activityId, streams, new Date(this.nowMs()).toISOString())
-    const { meanVSpeed, gainM } = this.ascentMetrics(streams)
-    setAscentMetrics(this.db, activityId, meanVSpeed, gainM)
+    const { meanVSpeed, gainM, descentLossM } = this.metricsFor(streams)
+    setActivityMetrics(this.db, activityId, meanVSpeed, gainM, descentLossM)
   }
 
   /**
-   * The stored sort/badge metrics (mean ascent speed + lift-excluded gain),
-   * defensively. `0` means "computed, nothing rankable" — NULL stays reserved
-   * for "not computed yet". A single malformed stream set must never abort a
-   * sync, so any unexpected failure is logged and treated as unrankable.
+   * The stored sort/badge metrics (mean ascent speed + lift-excluded gain +
+   * total descent), defensively. `0` means "computed, nothing rankable" — NULL
+   * stays reserved for "not computed yet". A single malformed stream set must
+   * never abort a sync, so any unexpected failure is logged and treated as
+   * unrankable.
    */
-  private ascentMetrics(streams: ActivityStreams): { meanVSpeed: number; gainM: number } {
+  private metricsFor(streams: ActivityStreams): {
+    meanVSpeed: number
+    gainM: number
+    descentLossM: number
+  } {
     try {
-      return activityAscentStats(streams) ?? { meanVSpeed: 0, gainM: 0 }
+      return activityMetrics(streams) ?? { meanVSpeed: 0, gainM: 0, descentLossM: 0 }
     } catch (err) {
-      this.log(`ascent metric skipped: ${err instanceof Error ? err.message : String(err)}`)
-      return { meanVSpeed: 0, gainM: 0 }
+      this.log(`activity metric skipped: ${err instanceof Error ? err.message : String(err)}`)
+      return { meanVSpeed: 0, gainM: 0, descentLossM: 0 }
     }
   }
 
@@ -303,10 +308,10 @@ export class SyncService {
       this.log(`computing ascent metrics for ${ids.length} activities`)
       for (const id of ids) {
         const streams = getStreams(this.db, id)
-        const { meanVSpeed, gainM } = streams
-          ? this.ascentMetrics(streams)
-          : { meanVSpeed: 0, gainM: 0 }
-        setAscentMetrics(this.db, id, meanVSpeed, gainM)
+        const { meanVSpeed, gainM, descentLossM } = streams
+          ? this.metricsFor(streams)
+          : { meanVSpeed: 0, gainM: 0, descentLossM: 0 }
+        setActivityMetrics(this.db, id, meanVSpeed, gainM, descentLossM)
       }
     }
   }

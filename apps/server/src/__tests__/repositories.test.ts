@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '@stravaboard/shared'
 import {
+  aggregateActivities,
   countPendingStreams,
   countStreamsMissingLatlng,
   cursorFor,
@@ -134,6 +135,23 @@ describe('activities repo', () => {
     expect(listSportTypes(db, 2)).toEqual(['TrailRun'])
   })
 
+  it('aggregates count and cumulated D+ over the filter, NULL gain counting as 0', () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000, { sportType: 'Hike', ascentGainM: 200 }))
+    upsertActivity(db, activity(2, 2000, { sportType: 'Hike', ascentGainM: 800 }))
+    upsertActivity(db, activity(3, 3000, { sportType: 'Run', ascentGainM: 500 }))
+    upsertActivity(db, activity(4, 4000, { sportType: 'Hike', ascentGainM: null }))
+    upsertActivity(db, activity(9, 9000, { athleteId: 2, ascentGainM: 9999 }))
+
+    expect(aggregateActivities(db, 1)).toEqual({ count: 4, totalAscentGainM: 1500 })
+    expect(aggregateActivities(db, 1, { sportType: 'Hike' })) //
+      .toEqual({ count: 3, totalAscentGainM: 1000 })
+    expect(aggregateActivities(db, 2)).toEqual({ count: 1, totalAscentGainM: 9999 })
+    // No matches → zeros, never null.
+    expect(aggregateActivities(db, 1, { sportType: 'Swim' })) //
+      .toEqual({ count: 0, totalAscentGainM: 0 })
+  })
+
   it('tracks pending streams oldest-first per athlete', () => {
     const db = testDb()
     upsertActivity(db, activity(1, 2000))
@@ -223,6 +241,24 @@ describe('sorting and badges', () => {
     upsertActivity(db, withMetric(3, 3000, null, 800))
     expect(listActivities(db, { athleteId: 1, limit: 10, sort: 'elevation' }).map((a) => a.id)) //
       .toEqual([3, 1, 2])
+  })
+
+  it('sorts by total descent with NULL metrics last and a working cursor', () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000, { descentLossM: 300 }))
+    upsertActivity(db, activity(2, 2000, { descentLossM: 1200 })) // biggest drop (ski)
+    upsertActivity(db, activity(3, 3000, { descentLossM: null })) // not computed yet
+    upsertActivity(db, activity(4, 4000, { descentLossM: 700 }))
+
+    const page1 = listActivities(db, { athleteId: 1, limit: 2, sort: 'descent' })
+    expect(page1.map((a) => a.id)).toEqual([2, 4])
+    const page2 = listActivities(db, {
+      athleteId: 1,
+      limit: 2,
+      sort: 'descent',
+      cursor: parseCursor(cursorFor('descent', page1[1]!))!,
+    })
+    expect(page2.map((a) => a.id)).toEqual([1, 3])
   })
 
   it('ranks top-3 by speed (metric > 0 only) and by elevation, per athlete', () => {

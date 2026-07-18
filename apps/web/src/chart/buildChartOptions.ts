@@ -17,6 +17,10 @@ const COLORS = {
 const INK_MUTED = '#898781'
 const GRID_LINE = '#e1e0d9'
 const AXIS_LINE = '#c3c2b7'
+// Pauses are neutral annotations, not a data series, so their token uses the
+// secondary ink rather than a categorical hue; white-on-ink clears the
+// text-contrast floor (7.9:1) and the token reads 7.7:1 on the light surface.
+const PAUSE_INK = '#52514e'
 
 export interface ChartOptionsOpts {
   /**
@@ -56,6 +60,12 @@ export function buildChartOptions(
   // clean. (Descents are never capped, so there is nothing excluded for them.)
   if (model.excludedAscents.length > 0) {
     series.push(segmentSeries('Excluded (lift/artefact)', model.excludedAscents, INK_MUTED))
+  }
+
+  // Excluded-pause markers on the baseline (only when there are pauses, to keep
+  // the legend clean).
+  if (model.pauses.length > 0) {
+    series.push(pauseSeries(model))
   }
 
   // Terrain slope lives on its own % axis (index 1); dashed to signal the
@@ -188,6 +198,46 @@ function segmentSeries(name: string, segments: Ascent[], color: string): LineSer
     // The legend identifies these series; a name endLabel would collide with
     // the last segment's value label.
     endLabel: { show: false },
+  }
+}
+
+/**
+ * Excluded-pause markers: one round token per pause on the baseline (y = 0) at
+ * the pause's distance, its duration in seconds inside. Pauses are neutral
+ * annotations, so the token uses the ink color rather than a categorical slot.
+ * The connecting line is invisible (width 0) and the points are null-separated,
+ * so the markers never imply a trend or bleed an interpolated value across the
+ * tooltip axis; per-datapoint labels need a visible symbol.
+ */
+function pauseSeries(model: VSpeedModel): LineSeriesOption {
+  const distance = model.streams.distance
+  const data: LineSeriesOption['data'] = []
+  for (const p of model.pauses) {
+    data.push({
+      value: [distance[p.startIndex]! / 1000, 0],
+      label: {
+        show: true,
+        position: 'inside',
+        formatter: `${Math.round(p.durationS)}`,
+        color: '#fff',
+        fontSize: 9,
+      },
+    })
+    data.push(null as unknown as (typeof data)[number])
+  }
+  return {
+    name: 'Pauses',
+    type: 'line',
+    data,
+    color: PAUSE_INK,
+    lineStyle: { width: 0, opacity: 0 },
+    showSymbol: true,
+    symbol: 'circle',
+    symbolSize: 20,
+    // Above the data lines so the tokens stay legible where they overlap.
+    z: 5,
+    endLabel: { show: false },
+    emphasis: { disabled: true },
   }
 }
 

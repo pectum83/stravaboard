@@ -152,7 +152,29 @@ describe('SyncService', () => {
     // 120 m gain over 600 s = 720 m/h (human), computed locally without API calls.
     expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeCloseTo(720, 4)
     expect(getActivity(db, 300)?.ascentGainM).toBeCloseTo(120, 4)
+    // A pure climb has no descent.
+    expect(getActivity(db, 300)?.descentLossM).toBe(0)
     expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
+  })
+
+  it('stores total descent (not speed-capped) so a fast ski descent still counts', async () => {
+    const db = connectedDb()
+    upsertActivity(db, { ...makeRow(500, '2025-03-01T08:00:00Z'), streamsStatus: 'done' })
+    const time = [],
+      distance = [],
+      altitude = []
+    for (let t = 0; t <= 600; t++) {
+      time.push(t)
+      distance.push(t * 6)
+      altitude.push(1000 - t * 0.5) // −1800 m/h descent, above the human cap
+    }
+    saveStreams(db, 500, { time, distance, altitude, latlng: [] }, '2025')
+
+    const { sync } = makeSync(db, { activities: [] })
+    await runSync(sync)
+    // 300 m drop over 600 s, kept in full (descents aren't lift-capped); no climb.
+    expect(getActivity(db, 500)?.descentLossM).toBeCloseTo(300, 4)
+    expect(getActivity(db, 500)?.ascentGainM).toBe(0)
   })
 
   it('excludes lift/artefact-fast climbs from the stored speed AND gain metrics', async () => {

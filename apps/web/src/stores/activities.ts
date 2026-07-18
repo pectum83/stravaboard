@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { ActivityBadges, ActivitySummary } from '@stravaboard/shared'
+import type { ActivityAggregate, ActivityBadges, ActivitySummary } from '@stravaboard/shared'
 import { api, type ActivitySort } from '../api/client'
 
 const PAGE_SIZE = 50
@@ -19,6 +19,8 @@ export const EMPTY_FILTERS: ActivityFilters = { q: '', from: '', to: '', sportTy
 
 const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [] }
 
+const NO_AGGREGATE: ActivityAggregate = { count: 0, totalAscentGainM: 0 }
+
 /** Sport the list opens on, when the athlete has any such activities. */
 const DEFAULT_SPORT_TYPE = 'Hike'
 
@@ -33,6 +35,8 @@ export const useActivitiesStore = defineStore('activities', () => {
   const sort = ref<ActivitySort>('date')
   const sportTypes = ref<string[]>([])
   const badges = ref<ActivityBadges>(NO_BADGES)
+  /** Whole-filter totals (count + cumulated D+) for the list header. */
+  const aggregate = ref<ActivityAggregate>(NO_AGGREGATE)
   // Once the user picks a sport type (or clears filters) we stop forcing the
   // Hike default, so their choice survives re-syncs.
   const sportTypeTouched = ref(false)
@@ -61,7 +65,7 @@ export const useActivitiesStore = defineStore('activities', () => {
     ) {
       filters.value.sportType = DEFAULT_SPORT_TYPE
     }
-    await Promise.all([loadMore(), loadBadges()])
+    await Promise.all([loadMore(), loadBadges(), loadAggregate()])
   }
 
   /** Reset the list and reload the first page (shared by filter and sort changes). */
@@ -77,7 +81,7 @@ export const useActivitiesStore = defineStore('activities', () => {
     // A sport-type change (including Clear) is a deliberate choice — respect it.
     if (patch.sportType !== undefined) sportTypeTouched.value = true
     filters.value = { ...filters.value, ...patch }
-    await Promise.all([reload(), loadBadges()])
+    await Promise.all([reload(), loadBadges(), loadAggregate()])
   }
 
   async function setSort(next: ActivitySort): Promise<void> {
@@ -123,6 +127,14 @@ export const useActivitiesStore = defineStore('activities', () => {
     }
   }
 
+  async function loadAggregate(): Promise<void> {
+    try {
+      aggregate.value = await api.stats(activeFilterParams())
+    } catch {
+      // The header totals are informational; degrade to zeros.
+    }
+  }
+
   function select(id: number): void {
     selectedId.value = id
   }
@@ -131,8 +143,8 @@ export const useActivitiesStore = defineStore('activities', () => {
   async function refreshActivity(id: number): Promise<void> {
     const updated = await api.refreshActivity(id)
     activities.value = activities.value.map((a) => (a.id === id ? updated : a))
-    // Ranks may have shifted (name/crop/streams changed the metric).
-    await loadBadges()
+    // Ranks and totals may have shifted (name/crop/streams changed the metric).
+    await Promise.all([loadBadges(), loadAggregate()])
   }
 
   /**
@@ -159,6 +171,7 @@ export const useActivitiesStore = defineStore('activities', () => {
     sort,
     sportTypes,
     badges,
+    aggregate,
     loadFirstPage,
     loadMore,
     setFilters,

@@ -18,6 +18,7 @@ function activity(id: number, overrides: Partial<ActivitySummary> = {}): Activit
     streamsStatus: 'done',
     ascentMeanVSpeed: 612,
     ascentGainM: 820,
+    descentLossM: 640,
     ...overrides,
   }
 }
@@ -30,7 +31,14 @@ function mountList(props: Partial<ListProps> & { activities: ActivitySummary[] }
   const pinia = createPinia()
   setActivePinia(pinia)
   return mount(ActivityList, {
-    props: { selectedId: null, hasMore: false, loading: false, badges: NO_BADGES, ...props },
+    props: {
+      selectedId: null,
+      hasMore: false,
+      loading: false,
+      badges: NO_BADGES,
+      sort: 'date',
+      ...props,
+    },
     global: { plugins: [pinia] },
   })
 }
@@ -46,6 +54,15 @@ describe('ActivityList', () => {
     expect(wrapper.text()).toContain('12.3 km')
     expect(wrapper.text()).toContain('D+ 820 m') // lift-excluded climbing gain
     expect(wrapper.text()).toContain('↑ 612 m/h')
+  })
+
+  it('surfaces total descent (D-) instead of ascent speed under the descent sort', () => {
+    const wrapper = mountList({
+      activities: [activity(1, { descentLossM: 1234 })],
+      sort: 'descent',
+    })
+    expect(wrapper.text()).toContain('D- 1234 m')
+    expect(wrapper.text()).not.toContain('m/h')
   })
 
   it('emits select with the activity id on click', async () => {

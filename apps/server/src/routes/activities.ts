@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import {
   type ActivityFilter,
+  aggregateActivities,
   cursorFor,
   getActivity,
   listActivities,
@@ -23,7 +24,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   /** Opaque keyset cursor `<sortValue>:<id>` from a previous page. */
   before: z.string().optional(),
-  sort: z.enum(['date', 'ascentSpeed', 'elevation']).default('date'),
+  sort: z.enum(['date', 'ascentSpeed', 'elevation', 'descent']).default('date'),
   q: z.string().trim().min(1).max(100).optional(),
   from: isoDay.optional(),
   to: isoDay.optional(),
@@ -98,6 +99,16 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
       ascentSpeed: topByAscentSpeed(db, req.athleteId, 3, filter),
       elevation: topByElevation(db, req.athleteId, 3, filter),
     }
+  })
+
+  // Whole-filter totals (count + cumulated D+), for the list header. Uses the
+  // same filter schema as the list/badges so it summarises the visible set.
+  app.get('/api/activities/stats', async (req, reply) => {
+    const parsed = badgeQuerySchema.safeParse(req.query)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid query', details: parsed.error.issues })
+    }
+    return aggregateActivities(db, req.athleteId, toFilter(parsed.data))
   })
 
   app.get('/api/activities/sport-types', async (req) => listSportTypes(db, req.athleteId))

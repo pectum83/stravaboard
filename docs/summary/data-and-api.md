@@ -38,6 +38,10 @@ applied automatically by `openDb`).
   ascent segments with FIXED params, lifts/artefacts + sub-30 m bumps removed;
   drives the `elevation` sort/badge and the list's D+, NOT Strava's raw
   total_elevation_gain; NULL = not computed, 0 = no qualifying ascent),
+  **descentLossM** (real, nullable — total descent m: Σ magnitude of ALL detected
+  descents with FIXED params, **NOT lift-capped** so fast ski descents count;
+  drives the `descent` sort and the list's D−; index `idx_activities_athlete_descent`
+  on (athlete_id, descent_loss_m); NULL = not computed, 0 = no qualifying descent),
   streamsStatus `'pending'|'done'|'none'`, rawSummary (full Strava JSON kept verbatim).
 - `activity_streams`: activityId (PK, FK), time / distance (JSON number[] text),
   altitude (JSON or NULL), **latlng** (JSON `[lat,lng][]`; **SQL NULL = not
@@ -65,6 +69,10 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
 - Migration `0006_activity_ascent_gain.sql` (drizzle-generated for the ADD
   COLUMN, hand-appended NULL-reset) adds `ascent_gain_m` and nulls
   `ascent_mean_vspeed` so the next sync computes BOTH metrics. Same caveat.
+- Migration `0007_activity_descent.sql` (hand-written incl. snapshot/journal —
+  drizzle-kit needs a TTY) adds `descent_loss_m` + its index and nulls
+  `ascent_mean_vspeed` so the next sync computes ALL THREE metrics. **Until that
+  sync runs the descent sort is empty — trigger a sync after deploying.**
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 
@@ -72,23 +80,25 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   streamsStatus), `listActivities(db, {limit, cursor, filter, sort})` with
   `ActivityFilter {q, fromEpoch, toEpochExclusive, sportType}` (q uses LIKE
   with `ESCAPE '\'`, wildcards escaped by `escapeLike`; ASCII-case-insensitive
-  only) and `ActivitySort 'date'|'ascentSpeed'|'elevation'`. **Composite keyset
-  cursor** `{value, id}` (`sortValueExpr` COALESCEs the metric to `METRIC_NULL
-= -1`, orders `value DESC, id DESC`; WHERE `value < c.value OR (value =
-c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
+  only) and `ActivitySort 'date'|'ascentSpeed'|'elevation'|'descent'`. **Composite
+  keyset cursor** `{value, id}` (`sortValueExpr` COALESCEs the metric to
+  `METRIC_NULL = -1`, orders `value DESC, id DESC`; WHERE `value < c.value OR
+(value = c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   `parseCursor(str)`. The `elevation` sort/`topByElevation` rank by
   `ascentGainM` (lift-excluded), NOT `totalElevationGainM`; `ascentSpeed` by
-  `ascentMeanVSpeed`. `topByAscentSpeed`/`topByElevation` (metric > 0, top-N ids
-  for badges, take an optional `ActivityFilter` so badges match the visible
-  list); `setAscentMetrics(db, id, meanVSpeed, gainM)` writes both columns,
-  `listMissingMetrics` (rows with streams but NULL speed metric, for local
-  backfill of both). Filter predicates are shared by
-  the list and the rankings via `filterConditions(filter)`. `listSportTypes`
-  (distinct, sorted, **only analyzable types**: ≥1 activity with
-  `totalElevationGainM > 0`), `listPendingStreams`/`count…`,
-  `listStreamsMissingLatlng`/
+  `ascentMeanVSpeed`; `descent` by `descentLossM` (no badge). `topByAscentSpeed`/
+  `topByElevation` (metric > 0, top-N ids for badges, take an optional
+  `ActivityFilter` so badges match the visible list); `aggregateActivities(db,
+athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
+  list header — `SUM(COALESCE(ascent_gain_m,0))`);
+  `setActivityMetrics(db, id, meanVSpeed, gainM, descentLossM)` writes all three
+  metric columns, `listMissingMetrics` (rows with streams but NULL speed metric,
+  for local backfill of all three). Filter predicates are shared by the list and
+  the rankings via `filterConditions(filter)`. `listSportTypes` (distinct,
+  sorted, **only analyzable types**: ≥1 activity with `totalElevationGainM > 0`),
+  `listPendingStreams`/`count…`, `listStreamsMissingLatlng`/
   `countStreamsMissingLatlng` (streams_status='done' AND latlng IS NULL, oldest
-  first), `toSummary` (includes `ascentMeanVSpeed`).
+  first), `toSummary` (includes `ascentMeanVSpeed`/`ascentGainM`/`descentLossM`).
 - `streams.repo`: `saveStreams` (upsert; latlng null→SQL NULL, array→JSON),
   `getStreams` (API mapping returns `latlng: null` for BOTH NULL and `[]`).
 - `settings.repo`, `syncState.repo`, `tokens.repo`: single-row get/save.
@@ -111,11 +121,14 @@ c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   (state, fetchedActivities, pendingStreams, pendingLatlngBackfill,
   rateLimitResumeAt?, error?).
 - `GET /activities?limit&before&sort&q&from&to&sportType` → `ActivitiesPage`.
-  `sort` = `date`(default)|`ascentSpeed`|`elevation`. `before` is the composite
-  cursor `"<value>:<id>"` (exclusive), always newest/highest first; filters
-  compose with it. `nextBefore` is built with `cursorFor` for the chosen sort.
-  `from`/`to` are `YYYY-MM-DD`, `to` inclusive (implemented as `< to+86400`).
+  `sort` = `date`(default)|`ascentSpeed`|`elevation`|`descent`. `before` is the
+  composite cursor `"<value>:<id>"` (exclusive), always newest/highest first;
+  filters compose with it. `nextBefore` is built with `cursorFor` for the chosen
+  sort. `from`/`to` are `YYYY-MM-DD`, `to` inclusive (implemented as `< to+86400`).
   Invalid query or malformed cursor → 400.
+- `GET /activities/stats?q&from&to&sportType` → `ActivityAggregate {count,
+totalAscentGainM}` — whole-filter totals (all matches, not just the page) for
+  the list header; same filter schema as the list/badges. Invalid query → 400.
 - `GET /activities/badges?q&from&to&sportType` → `ActivityBadges
 {ascentSpeed:number[], elevation:number[]}` — top-3 activity ids per ranking
   (ascentMeanVSpeed / ascentGainM > 0) **within the same filter as the list**,
@@ -161,10 +174,10 @@ sportType?: enum STRAVA_SPORT_TYPES}`, at least one field (else 400).
   2. `fetchPendingStreams` — per pending activity oldest-first: fetch streams,
      save, mark done (404 → 'none'), then advance checkpoint. Stores latlng
      (missing stream → `[]`), so new syncs never create NULL latlng. Saving
-     goes through `storeStreams`, which also computes and persists
-     `ascentMeanVSpeed` (`activityAscentMean(streams) ?? 0`). `runFor` starts
-     with `computeMissingMetrics` — a local, no-API backfill over
-     `listMissingMetrics` so legacy rows get the metric.
+     goes through `storeStreams`, which also computes and persists the three
+     metrics (`activityMetrics(streams)` via `SyncService.metricsFor`, → 0/0/0
+     on failure). `runFor` starts with `computeMissingMetrics` — a local, no-API
+     backfill over `listMissingMetrics` so legacy rows get the metrics.
   3. `backfillLatlng` — batches of `listStreamsMissingLatlng(50)`, re-fetches
      the full stream set (`refetchStreamsFor`); on 404 rewrites existing
      streams with `latlng: []`. **Invariant: every visit writes non-NULL

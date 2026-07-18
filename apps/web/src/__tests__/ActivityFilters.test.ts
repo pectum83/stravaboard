@@ -3,7 +3,10 @@ import { mount } from '@vue/test-utils'
 import ActivityFilters from '../components/ActivityFilters.vue'
 import { EMPTY_FILTERS } from '../stores/activities'
 
-function mountFilters(overrides = {}, sort: 'date' | 'ascentSpeed' | 'elevation' = 'date') {
+function mountFilters(
+  overrides = {},
+  sort: 'date' | 'ascentSpeed' | 'elevation' | 'descent' = 'date',
+) {
   return mount(ActivityFilters, {
     props: {
       filters: { ...EMPTY_FILTERS, ...overrides },
@@ -47,16 +50,17 @@ describe('ActivityFilters', () => {
     expect(wrapper.emitted('update')).toEqual([[{ sportType: 'Run' }]])
   })
 
-  it('emits sort changes with the three options', async () => {
+  it('emits sort changes with all options', async () => {
     const wrapper = mountFilters()
     const sortSelect = wrapper.find('select[aria-label="sort by"]')
     expect(sortSelect.findAll('option').map((o) => o.text().trim())).toEqual([
       'Newest first',
       'Best ascent speed',
       'Most elevation',
+      'Most descent',
     ])
-    await sortSelect.setValue('ascentSpeed')
-    expect(wrapper.emitted('update:sort')).toEqual([['ascentSpeed']])
+    await sortSelect.setValue('descent')
+    expect(wrapper.emitted('update:sort')).toEqual([['descent']])
   })
 
   it('summarises the active sort and filtered state in the summary', () => {

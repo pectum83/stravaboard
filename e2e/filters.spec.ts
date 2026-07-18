@@ -41,6 +41,20 @@ test('filters the list by name, sport and date range, and clears', async ({ page
   await expect(items).toHaveCount(3)
 })
 
+test('sorts by most descent and shows whole-filter totals', async ({ page }) => {
+  // The list header summarises the whole (unfiltered) set.
+  const summary = page.locator('.list-summary')
+  await expect(summary).toContainText('3 activities')
+  await expect(summary).toContainText('D+')
+
+  // Most descent: the mountain run (two long descents) leads, and the meta line
+  // switches to the D− readout.
+  await page.getByLabel('sort by').selectOption({ label: 'Most descent' })
+  const items = page.locator('button.item')
+  await expect(items.first()).toContainText('Morning Mountain Run')
+  await expect(items.first()).toContainText('D-')
+})
+
 test('filters compose: word plus sport with no match shows an empty list', async ({ page }) => {
   // "Mountain" matches only the TrailRun; requiring sport type Run yields none.
   await page.getByLabel('filter by name').fill('Mountain')

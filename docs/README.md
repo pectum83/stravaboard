@@ -28,13 +28,21 @@ value as a fixed constant.
 
 Ascent/descent means exclude **pauses**: periods where the GPS position stays
 within ~5 m for more than 30 s (threshold configurable) — detected from
-position, not from GPS speed. Whole-activity ascent and descent means are shown
-above the chart. A **map panel** beside the chart shows the activity trace with
+position, not from GPS speed. Each excluded pause is marked with a small round
+token on the chart's baseline, the pause length in seconds inside it, so you can
+see where and how long you stopped. Above the chart, a stats strip shows the
+activity **length**, **total duration** (elapsed and moving), the **total paused
+time**, and the whole-activity ascent and descent means. A **map panel** beside
+the chart shows the activity trace with
 streets / **topo** (contour lines + hillshade) / satellite / 3D-terrain layers,
 and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
 sport type (all gathered in a collapsible "Filters & sort" section) and
-**sorted** by date, best mean ascent speed, or climbing gain. The list
+**sorted** by date, best mean ascent speed, climbing gain, or **most descent**
+(total D− — useful for point-to-point outings like alpine ski or multi-day
+treks, where you descend far more than you climb; when sorted this way each row
+shows its D−). Just above the list, a line totals the **number of activities**
+in the current filter and their **cumulated D+**. The list
 opens on **Hike** by default when you have any hikes. The three best activities
 in each ranking get 🥇🥈🥉 **badges** — computed within the current filter, so a
 filtered view badges its own best — and the mean ascent speed is shown on every

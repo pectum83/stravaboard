@@ -1,5 +1,6 @@
 import type {
   ActivitiesPage,
+  ActivityAggregate,
   ActivityBadges,
   ActivityStreams,
   ActivitySummary,
@@ -8,7 +9,7 @@ import type {
   SyncStatus,
 } from '@stravaboard/shared'
 
-export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation'
+export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -64,6 +65,15 @@ export const api = {
     if (params.sportType) q.set('sportType', params.sportType)
     const qs = q.toString()
     return request<ActivityBadges>(`/api/activities/badges${qs ? `?${qs}` : ''}`)
+  },
+  stats: (params: ActivityBadgeParams = {}) => {
+    const q = new URLSearchParams()
+    if (params.q) q.set('q', params.q)
+    if (params.from) q.set('from', params.from)
+    if (params.to) q.set('to', params.to)
+    if (params.sportType) q.set('sportType', params.sportType)
+    const qs = q.toString()
+    return request<ActivityAggregate>(`/api/activities/stats${qs ? `?${qs}` : ''}`)
   },
   refreshActivity: (activityId: number) =>
     request<ActivitySummary>(`/api/activities/${activityId}/refresh`, { method: 'POST' }),

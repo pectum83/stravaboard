@@ -44,6 +44,13 @@ const selectedActivity = computed(
 )
 const hasAltitude = computed(() => (streams.value?.altitude?.length ?? 0) > 0)
 
+/** "142 activities · D+ 214 300 m" — totals over the whole current filter. */
+const listSummary = computed(() => {
+  const { count, totalAscentGainM } = activitiesStore.aggregate
+  const label = count === 1 ? 'activity' : 'activities'
+  return `${count.toLocaleString()} ${label} · D+ ${Math.round(totalAscentGainM).toLocaleString()} m`
+})
+
 const model = computed(() =>
   streams.value && hasAltitude.value ? computeVSpeedModel(streams.value, settings.value) : null,
 )
@@ -116,6 +123,7 @@ onMounted(async () => {
             @update="activitiesStore.setFilters"
             @update:sort="activitiesStore.setSort"
           />
+          <p class="list-summary">{{ listSummary }}</p>
           <div class="list-wrap">
             <ActivityList
               :activities="activities"
@@ -123,6 +131,7 @@ onMounted(async () => {
               :has-more="hasMore"
               :loading="loading"
               :badges="activitiesStore.badges"
+              :sort="activitiesStore.sort"
               @select="activitiesStore.select"
               @load-more="activitiesStore.loadMore"
             />
@@ -142,7 +151,15 @@ onMounted(async () => {
               {{ reloading ? 'Reloading…' : '↻ Reload from Strava' }}
             </button>
             <span v-if="reloadError" class="reload-error">{{ reloadError }}</span>
-            <ActivityStats v-if="model" :ascent="model.ascentStats" :descent="model.descentStats" />
+            <ActivityStats
+              v-if="model && selectedActivity"
+              :distance-m="selectedActivity.distanceM"
+              :elapsed-s="selectedActivity.elapsedTimeS"
+              :moving-time-s="selectedActivity.movingTimeS"
+              :paused-s="model.pausedS"
+              :ascent="model.ascentStats"
+              :descent="model.descentStats"
+            />
           </div>
           <div class="visuals">
             <section class="chart-area">
@@ -243,6 +260,18 @@ aside {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.list-summary {
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e1e0d9;
+  font-size: 0.78rem;
+  color: #898781;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .list-wrap {

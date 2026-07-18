@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { type ActivityBadges, type ActivitySummary, STRAVA_SPORT_TYPES } from '@stravaboard/shared'
+import type { ActivitySort } from '../api/client'
 import { useActivitiesStore } from '../stores/activities'
 
 const props = defineProps<{
@@ -9,6 +10,8 @@ const props = defineProps<{
   hasMore: boolean
   loading: boolean
   badges: ActivityBadges
+  /** Active sort — drives which secondary metric the meta line surfaces. */
+  sort: ActivitySort
 }>()
 
 const emit = defineEmits<{
@@ -170,7 +173,10 @@ function km(m: number): string {
             </span>
             <span class="meta">
               {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.ascentGainM ?? 0) }} m
-              <template v-if="activity.ascentMeanVSpeed">
+              <template v-if="sort === 'descent'">
+                · D- {{ Math.round(activity.descentLossM ?? 0) }} m
+              </template>
+              <template v-else-if="activity.ascentMeanVSpeed">
                 · ↑ {{ Math.round(activity.ascentMeanVSpeed) }} m/h
               </template>
               <em v-if="activity.streamsStatus === 'none'" class="badge">no elevation data</em>

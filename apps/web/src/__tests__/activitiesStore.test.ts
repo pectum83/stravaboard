@@ -9,6 +9,7 @@ vi.mock('../api/client', () => ({
     activities: vi.fn(),
     sportTypes: vi.fn(),
     badges: vi.fn(),
+    stats: vi.fn(),
     refreshActivity: vi.fn(),
     updateActivity: vi.fn(),
   },
@@ -27,6 +28,7 @@ function summary(id: number, overrides: Partial<ActivitySummary> = {}): Activity
     streamsStatus: 'done',
     ascentMeanVSpeed: 600,
     ascentGainM: 480,
+    descentLossM: 520,
     ...overrides,
   }
 }
@@ -37,6 +39,7 @@ describe('activities store', () => {
     vi.clearAllMocks()
     vi.mocked(api.sportTypes).mockResolvedValue(['Run'])
     vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [], elevation: [] })
+    vi.mocked(api.stats).mockResolvedValue({ count: 0, totalAscentGainM: 0 })
   })
 
   it('replaces the refreshed activity in place', async () => {
@@ -135,6 +138,19 @@ describe('activities store', () => {
     )
     expect(store.sort).toBe('ascentSpeed')
     expect(store.activities.map((a) => a.id)).toEqual([2])
+  })
+
+  it('loads whole-filter totals on first load and re-loads them when filters change', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    vi.mocked(api.stats).mockResolvedValue({ count: 42, totalAscentGainM: 12_345 })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+    expect(store.aggregate).toEqual({ count: 42, totalAscentGainM: 12_345 })
+
+    vi.mocked(api.stats).mockResolvedValue({ count: 3, totalAscentGainM: 900 })
+    await store.setFilters({ q: 'col' })
+    expect(vi.mocked(api.stats)).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'col' }))
+    expect(store.aggregate).toEqual({ count: 3, totalAscentGainM: 900 })
   })
 
   it('opens on Hike when the athlete has hikes, and filters list + badges by it', async () => {

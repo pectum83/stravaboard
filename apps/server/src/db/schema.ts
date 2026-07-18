@@ -48,12 +48,19 @@ export const activities = sqliteTable(
      * raw total_elevation_gain. NULL = not computed yet; 0 = no qualifying ascent.
      */
     ascentGainM: real('ascent_gain_m'),
+    /**
+     * Total descent (m, positive) over every detected descent — NOT speed-capped
+     * (see shared `activityMetrics`), so fast ski descents count in full. Drives
+     * the "descent" sort. NULL = not computed yet; 0 = no qualifying descent.
+     */
+    descentLossM: real('descent_loss_m'),
     /** Full Strava summary payload (JSON) so future features need no re-sync. */
     rawSummary: text('raw_summary').notNull(),
   },
   (t) => [
     index('idx_activities_athlete_start').on(t.athleteId, t.startDateEpoch),
     index('idx_activities_athlete_vspeed').on(t.athleteId, t.ascentMeanVSpeed),
+    index('idx_activities_athlete_descent').on(t.athleteId, t.descentLossM),
   ],
 )
 

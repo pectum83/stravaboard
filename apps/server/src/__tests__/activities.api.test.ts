@@ -103,6 +103,39 @@ describe('activities API', () => {
     expect(bad.statusCode).toBe(400)
   })
 
+  it('sorts by total descent, biggest drop first with NULL last', async () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000, { descentLossM: 300 }))
+    upsertActivity(db, activity(2, 2000, { descentLossM: 1500 })) // biggest drop (ski)
+    upsertActivity(db, activity(3, 3000, { descentLossM: null })) // not computed yet
+    const { app, cookies } = await appWithAthlete(db)
+
+    const res = await app.inject({ method: 'GET', url: '/api/activities?sort=descent', cookies })
+    expect(res.json().activities.map((a: { id: number }) => a.id)).toEqual([2, 1, 3])
+    expect(res.json().activities[0].descentLossM).toBe(1500)
+  })
+
+  it('serves whole-filter totals (count + cumulated D+)', async () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000, { sportType: 'Hike', ascentGainM: 200 }))
+    upsertActivity(db, activity(2, 2000, { sportType: 'Hike', ascentGainM: 800 }))
+    upsertActivity(db, activity(3, 3000, { sportType: 'Run', ascentGainM: 500 }))
+    const { app, cookies } = await appWithAthlete(db)
+
+    const all = await app.inject({ method: 'GET', url: '/api/activities/stats', cookies })
+    expect(all.json()).toEqual({ count: 3, totalAscentGainM: 1500 })
+
+    const hike = await app.inject({
+      method: 'GET',
+      url: '/api/activities/stats?sportType=Hike',
+      cookies,
+    })
+    expect(hike.json()).toEqual({ count: 2, totalAscentGainM: 1000 })
+
+    const bad = await app.inject({ method: 'GET', url: '/api/activities/stats?from=nope', cookies })
+    expect(bad.statusCode).toBe(400)
+  })
+
   it('serves top-3 badges per ranking', async () => {
     const db = testDb()
     for (const [id, vspeed, gain] of [

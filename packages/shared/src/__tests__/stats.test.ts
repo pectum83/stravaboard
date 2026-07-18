@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Ascent } from '../vspeed/ascents.js'
 import {
   activityAscentMean,
-  activityAscentStats,
+  activityMetrics,
   aggregateSegments,
   MAX_HUMAN_VSPEED,
   partitionSegments,
@@ -100,24 +100,39 @@ describe('activityAscentMean (standard parameters)', () => {
   })
 })
 
-describe('activityAscentStats (mean speed + lift-excluded gain)', () => {
-  it('reports the climbing gain of the kept ascents', () => {
+describe('activityMetrics (mean speed + lift-excluded gain + total descent)', () => {
+  it('reports the climbing gain of the kept ascents, with no descent', () => {
     // 200 m gained over 1000 s at a human 720 m/h.
-    const stats = activityAscentStats({ ...ramp(1000, 6, 0.2), latlng: null })
+    const stats = activityMetrics({ ...ramp(1000, 6, 0.2), latlng: null })
     expect(stats).not.toBeNull()
     expect(stats!.meanVSpeed).toBeCloseTo(720, 4)
     expect(stats!.gainM).toBeCloseTo(200, 4)
+    expect(stats!.descentLossM).toBe(0)
   })
 
   it('excludes lift gain from the climbing total', () => {
-    // 3240 m/h lift over 540 m — excluded, so both metrics are 0.
-    const stats = activityAscentStats({ ...ramp(600, 6, 0.9), latlng: null })
-    expect(stats).toEqual({ meanVSpeed: 0, gainM: 0 })
+    // 3240 m/h lift over 540 m — excluded, so every metric is 0.
+    const stats = activityMetrics({ ...ramp(600, 6, 0.9), latlng: null })
+    expect(stats).toEqual({ meanVSpeed: 0, gainM: 0, descentLossM: 0 })
+  })
+
+  it('measures total descent and does NOT speed-cap it (fast ski descents count)', () => {
+    // 300 m drop over 600 s = −1800 m/h, above the human cap — still counted in
+    // full, unlike an equally fast ascent which would be dropped as a lift.
+    const stats = activityMetrics({ ...ramp(600, 6, -0.5), latlng: null })
+    expect(stats!.descentLossM).toBeCloseTo(300, 4)
+    expect(stats!.gainM).toBe(0)
+    expect(stats!.meanVSpeed).toBe(0)
+  })
+
+  it('measures a plain descent loss (positive metres)', () => {
+    const stats = activityMetrics({ ...ramp(1000, 6, -0.2), latlng: null })
+    expect(stats!.descentLossM).toBeCloseTo(200, 4)
   })
 
   it('is null without altitude', () => {
     expect(
-      activityAscentStats({ time: [0, 1], distance: [0, 1], altitude: null, latlng: null }),
+      activityMetrics({ time: [0, 1], distance: [0, 1], altitude: null, latlng: null }),
     ).toBeNull()
   })
 })

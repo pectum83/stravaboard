@@ -22,6 +22,12 @@ export interface ActivitySummary {
    * sort/badge and the displayed D+. null until computed; 0 when no ascent.
    */
   ascentGainM: number | null
+  /**
+   * Total descent (m, positive): the sum of every detected descent (standard
+   * parameters, NOT speed-capped so fast ski descents count) — drives the
+   * "descent" sort and the displayed D−. null until computed; 0 when no descent.
+   */
+  descentLossM: number | null
 }
 
 export type StreamsStatus = 'pending' | 'done' | 'none'
@@ -165,4 +171,12 @@ export interface ActivitiesPage {
   activities: ActivitySummary[]
   /** Cursor for the next page (pass as ?before=), absent on the last page. */
   nextBefore?: string
+}
+
+/** Whole-filter totals for the activity list (all matches, not just the loaded page). */
+export interface ActivityAggregate {
+  /** Number of activities matching the current filter. */
+  count: number
+  /** Cumulated lift-excluded climbing gain (m) across those activities. */
+  totalAscentGainM: number
 }

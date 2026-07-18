@@ -55,13 +55,15 @@ describe('computeVSpeedModel', () => {
     expect(model.excludedAscents).toHaveLength(0)
   })
 
-  it('excludes detected pauses from ascent means', () => {
+  it('excludes detected pauses from ascent means and totals the paused time', () => {
     const model = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
     expect(model.pauses).toHaveLength(1)
     expect(model.ascents).toHaveLength(1)
     // 200 m gain over 1000 effective seconds (1100 elapsed) = 720 m/h
     expect(model.ascents[0]!.effectiveTimeS).toBe(1000)
     expect(model.ascents[0]!.meanVSpeed).toBeCloseTo(720, 4)
+    // The single 100 s standstill is the whole paused time.
+    expect(model.pausedS).toBe(100)
   })
 
   it('computes the terrain slope on its own distance window', () => {
@@ -86,6 +88,7 @@ describe('computeVSpeedModel', () => {
     )
     expect(model.instant).toEqual([])
     expect(model.pauses).toEqual([])
+    expect(model.pausedS).toBe(0)
     expect(model.ascentStats.meanVSpeed).toBeNull()
     expect(model.descentStats.meanVSpeed).toBeNull()
   })

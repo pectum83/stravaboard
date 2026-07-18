@@ -10,6 +10,8 @@ export interface ActivityRow {
   ascentMeanVSpeed?: number | null
   /** Lift-excluded climbing gain (m); NULL = not computed yet, 0 = no ascent. */
   ascentGainM?: number | null
+  /** Total descent (m, positive, not speed-capped); NULL = not computed, 0 = no descent. */
+  descentLossM?: number | null
   name: string
   sportType: string
   startDate: string
@@ -39,7 +41,7 @@ export function upsertActivitySummary(db: Db, row: ActivityRow): void {
     .run()
 }
 
-export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation'
+export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent'
 
 /** Metric value NULL sorts last: activities without data rank below a 0. */
 const METRIC_NULL = -1
@@ -77,6 +79,8 @@ function sortValueExpr(sort: ActivitySort) {
       return sql<number>`COALESCE(${activities.ascentMeanVSpeed}, ${METRIC_NULL})`
     case 'elevation':
       return sql<number>`COALESCE(${activities.ascentGainM}, ${METRIC_NULL})`
+    case 'descent':
+      return sql<number>`COALESCE(${activities.descentLossM}, ${METRIC_NULL})`
   }
 }
 
@@ -87,7 +91,9 @@ export function cursorFor(sort: ActivitySort, row: ActivityRow): string {
       ? row.startDateEpoch
       : sort === 'elevation'
         ? (row.ascentGainM ?? METRIC_NULL)
-        : (row.ascentMeanVSpeed ?? METRIC_NULL)
+        : sort === 'descent'
+          ? (row.descentLossM ?? METRIC_NULL)
+          : (row.ascentMeanVSpeed ?? METRIC_NULL)
   return `${value}:${row.id}`
 }
 
@@ -198,15 +204,19 @@ export function updateActivityFields(
   db.update(activities).set(fields).where(eq(activities.id, id)).run()
 }
 
-/** Store the computed sort/badge metrics (mean ascent speed + climbing gain). */
-export function setAscentMetrics(
+/**
+ * Store the computed sort/badge metrics (mean ascent speed + lift-excluded
+ * climbing gain + total descent).
+ */
+export function setActivityMetrics(
   db: Db,
   id: number,
   meanVSpeed: number | null,
   gainM: number | null,
+  descentLossM: number | null,
 ): void {
   db.update(activities)
-    .set({ ascentMeanVSpeed: meanVSpeed, ascentGainM: gainM })
+    .set({ ascentMeanVSpeed: meanVSpeed, ascentGainM: gainM, descentLossM })
     .where(eq(activities.id, id))
     .run()
 }
@@ -230,6 +240,27 @@ export function listMissingMetrics(db: Db, athleteId: number, limit: number): nu
     .limit(limit)
     .all()
     .map((r) => r.id)
+}
+
+/**
+ * Whole-filter totals for the activity list: how many activities match `filter`
+ * and their cumulated lift-excluded climbing gain (m) — the same D+ shown per
+ * row (NULL metrics count as 0), so the total agrees with the visible figures.
+ */
+export function aggregateActivities(
+  db: Db,
+  athleteId: number,
+  filter: ActivityFilter = {},
+): { count: number; totalAscentGainM: number } {
+  const row = db
+    .select({
+      total: count(),
+      totalAscentGainM: sql<number>`COALESCE(SUM(${activities.ascentGainM}), 0)`,
+    })
+    .from(activities)
+    .where(and(eq(activities.athleteId, athleteId), ...filterConditions(filter)))
+    .get()
+  return { count: row?.total ?? 0, totalAscentGainM: row?.totalAscentGainM ?? 0 }
 }
 
 /** Escape LIKE wildcards so user input matches literally. */
@@ -336,6 +367,7 @@ export function toSummary(row: ActivityRow): ActivitySummary {
     id: row.id,
     ascentMeanVSpeed: row.ascentMeanVSpeed ?? null,
     ascentGainM: row.ascentGainM ?? null,
+    descentLossM: row.descentLossM ?? null,
     name: row.name,
     sportType: row.sportType,
     startDate: row.startDate,

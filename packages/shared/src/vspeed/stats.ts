@@ -1,4 +1,4 @@
-import { detectAscents, type Ascent } from './ascents.js'
+import { detectAscents, detectDescents, type Ascent } from './ascents.js'
 import { detectPauses } from './pauses.js'
 import { despike } from './smoothing.js'
 import type { ActivityStreams } from '../types.js'
@@ -54,27 +54,29 @@ export function partitionSegments(
   return { kept, excluded }
 }
 
-/**
- * Whole-activity mean ascent speed (m/h, pause-excluded) with the standard
- * parameters. Returns null when the activity has no altitude data, 0 when it
- * has altitude but no qualifying ascent.
- */
-/** The stored per-activity ascent metrics. */
-export interface AscentMetrics {
+/** The stored per-activity sort/badge metrics, standard segment parameters. */
+export interface ActivityMetrics {
   /** Mean ascent speed (m/h), 0 when no ascent qualifies. */
   meanVSpeed: number
   /** Total climbing gain (m) over the kept ascents, lift/artefact climbs excluded. */
   gainM: number
+  /**
+   * Total descent (m, positive) over every detected descent — deliberately NOT
+   * speed-capped, so a fast alpine-ski descent counts in full (despiking + the
+   * min-gain hysteresis already reject GPS noise). 0 when no descent qualifies.
+   */
+  descentLossM: number
 }
 
 /**
- * The stored ascent metrics (mean speed + lift-excluded climbing gain) with the
- * standard parameters. Despikes GPS altitude spikes, detects ascents, drops
- * lift/artefact-fast segments, and aggregates the rest. Returns `null` when the
- * activity has no altitude data or the streams don't line up (unrankable); both
- * metrics are `0` when altitude exists but no human ascent qualifies.
+ * The stored per-activity metrics with the standard parameters. Despikes GPS
+ * altitude spikes, then: for the ascent metrics detects ascents and drops
+ * lift/artefact-fast segments before aggregating; for the descent total sums
+ * every detected descent (no lift cap — see `descentLossM`). Returns `null`
+ * when the activity has no altitude data or the streams don't line up
+ * (unrankable); all metrics are `0` when altitude exists but nothing qualifies.
  */
-export function activityAscentStats(streams: ActivityStreams): AscentMetrics | null {
+export function activityMetrics(streams: ActivityStreams): ActivityMetrics | null {
   const rawAltitude = streams.altitude
   if (rawAltitude === null || rawAltitude.length === 0) return null
   // Segmentation needs time/distance/altitude to line up. Some activities carry
@@ -90,21 +92,28 @@ export function activityAscentStats(streams: ActivityStreams): AscentMetrics | n
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, {
     thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
   })
-  const ascents = detectAscents(streams.time, streams.distance, altitude, {
+  const segmentOptions = {
     minGainM: STANDARD_SEGMENT_PARAMS.minGainM,
     descentToleranceM: STANDARD_SEGMENT_PARAMS.descentToleranceM,
     pauses,
-  })
-  const agg = aggregateSegments(partitionSegments(ascents).kept)
-  return { meanVSpeed: agg.meanVSpeed ?? 0, gainM: agg.totalGainM }
+  }
+  const ascents = detectAscents(streams.time, streams.distance, altitude, segmentOptions)
+  const ascentAgg = aggregateSegments(partitionSegments(ascents).kept)
+  // Descents keep every segment: a legitimately fast ski descent must count
+  // toward D−, unlike ascents where a fast segment is a mechanical lift.
+  const descents = detectDescents(streams.time, streams.distance, altitude, segmentOptions)
+  // Descent gains are negative; report the magnitude. Math.abs also normalises
+  // the −0 produced when there are no descents to a plain 0.
+  const descentLossM = Math.abs(aggregateSegments(descents).totalGainM)
+  return { meanVSpeed: ascentAgg.meanVSpeed ?? 0, gainM: ascentAgg.totalGainM, descentLossM }
 }
 
 /**
  * Whole-activity mean ascent speed (m/h) — the ranking metric behind the "Best
- * ascent speed" sort and badges. Thin wrapper over `activityAscentStats`.
+ * ascent speed" sort and badges. Thin wrapper over `activityMetrics`.
  */
 export function activityAscentMean(streams: ActivityStreams): number | null {
-  return activityAscentStats(streams)?.meanVSpeed ?? null
+  return activityMetrics(streams)?.meanVSpeed ?? null
 }
 
 /** Aggregate segments into a whole-activity mean: Σ gain / Σ effective time. */

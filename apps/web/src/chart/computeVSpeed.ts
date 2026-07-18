@@ -36,6 +36,8 @@ export interface VSpeedModel {
    */
   excludedAscents: Ascent[]
   pauses: Pause[]
+  /** Total excluded-pause time across the whole activity, seconds. */
+  pausedS: number
   ascentStats: SegmentAggregate
   descentStats: SegmentAggregate
 }
@@ -88,6 +90,7 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
     descents,
     excludedAscents,
     pauses,
+    pausedS: pauses.reduce((sum, p) => sum + p.durationS, 0),
     ascentStats: aggregateSegments(ascents),
     descentStats: aggregateSegments(descents),
   }

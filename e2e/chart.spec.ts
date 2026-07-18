@@ -18,6 +18,13 @@ test('mountain run shows chart with whole-activity ascent/descent means', async 
   await expect(stats.locator('.ascent')).toContainText('↑')
   await expect(stats.locator('.descent')).toContainText('↓')
 
+  // Whole-activity summary: length, elapsed + moving duration, and the
+  // (excluded) pause total — the mountain profile has a 90 s standstill.
+  await expect(stats.locator('.distance')).toContainText('km')
+  await expect(stats.locator('.duration')).toContainText('moving')
+  await expect(stats.locator('.pauses')).toContainText('⏸')
+  await expect(stats.locator('.pauses')).toContainText(/\d+:\d\d/)
+
   // The flat run has no ascent/descent segments -> em dashes.
   await page.locator('button.item', { hasText: 'Flat River Loop' }).click()
   await expect(stats.locator('.ascent')).toContainText('—')
