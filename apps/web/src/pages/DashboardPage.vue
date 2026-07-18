@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { api } from '../api/client'
 import { useActivitiesStore } from '../stores/activities'
@@ -18,6 +18,16 @@ const activitiesStore = useActivitiesStore()
 const settingsStore = useSettingsStore()
 const { activities, selectedId, hasMore, loading } = storeToRefs(activitiesStore)
 const { settings } = storeToRefs(settingsStore)
+
+// A metric-affecting settings change makes the server recompute the stored
+// ranking metrics; reload the list, badges and totals so they match the chart
+// (which already reacts to `settings` via the computed model below).
+watch(
+  () => settingsStore.metricsRecomputedAt,
+  () => {
+    void activitiesStore.reloadRankings()
+  },
+)
 
 const connected = ref<boolean | null>(null)
 const userName = ref<string | null>(null)

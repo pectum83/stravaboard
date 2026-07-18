@@ -11,6 +11,8 @@ Settings { instantWindowS, shortWindowS, longWindowS, ascentMinGainM,
            ascentDescentToleranceM, pauseThresholdS, pauseRadiusM,
            slopeWindowM, liftMaxVSpeed }
 DEFAULT_SETTINGS = { 60, 120, 300, 30, 10, 30, 5, 100, 1400 }   // same order
+METRIC_SETTING_KEYS = [ascentMinGainM, ascentDescentToleranceM, pauseThresholdS,
+           pauseRadiusM, liftMaxVSpeed]   // the settings that re-rank stored metrics
 ActivityStreams { time, distance, altitude|null, latlng|null }
 ```
 
@@ -115,34 +117,46 @@ segments, maxAbsVSpeed=MAX_HUMAN_VSPEED) → {kept, excluded}` split on
 resort lifts run ~1450 m/h — or GPS artefacts that survived despiking) are
 dropped from the ascent mean, the metric and the badges. **Applied to ascents
 only** — descents legitimately exceed the cap (skiing/running downhill), and
-descent spikes are already handled by despike. The **stored metric** uses the
-fixed `MAX_HUMAN_VSPEED`; the **chart** uses the tunable `liftMaxVSpeed` setting
-(default 1400), passed to `partitionSegments` by `computeVSpeedModel`. Excluded
-climbs are kept as `VSpeedModel.excludedAscents` (drawn greyed).
+descent spikes are already handled by despike. `MAX_HUMAN_VSPEED` is only the
+**default** cap now: both the **chart** (`computeVSpeedModel`) and the **stored
+metric** (`activityMetrics`) cap ascents at each athlete's tunable `liftMaxVSpeed`
+setting (default 1400) — `params.maxAscentVSpeed`, via `metricParamsFromSettings`.
+Excluded climbs are kept as `VSpeedModel.excludedAscents` (drawn greyed).
 
-`activityMetrics(streams) → {meanVSpeed, gainM, descentLossM}|null` — the three
-stored ranking metrics. **Despikes altitude**, runs `detectAscents` +
-`detectDescents` + `detectPauses` with the FIXED `STANDARD_SEGMENT_PARAMS`
-(`{minGainM:30, descentToleranceM:10, pauseThresholdS:30}`), then aggregates —
-deliberately settings-independent so rankings stay stable. `meanVSpeed` (of
-`partitionSegments(ascents).kept`) drives the "Best ascent speed" sort/badge;
-`gainM` (the summed kept-ascent gain, **lifts and sub-30 m bumps excluded**)
-drives the "elevation" sort/badge AND the list's displayed D+, replacing Strava's
-raw `total_elevation_gain`; `descentLossM` (the summed magnitude of **all**
-detected descents — **NOT lift-capped**, so fast ski/downhill descents count in
-full) drives the "descent" sort and the list's displayed D−. `activityAscentMean(
-streams)` is a thin wrapper returning just `meanVSpeed`. Returns `null` with no
-altitude **or when time/distance/altitude lengths disagree** (e.g. an altitude
-stream with a missing/partial distance stream — unrankable, never throws), `0`
-per metric when nothing qualifies. All three persist to
-`activities.ascentMeanVSpeed` / `ascentGainM` / `descentLossM`; the sync wraps the
-call in `SyncService.metricsFor` so a malformed stream set degrades to
-`{0, 0, 0}` instead of aborting the whole sync. **Changing this algorithm (or
-`MAX_HUMAN_VSPEED`, or pause detection — pauses feed the mean) requires
-recomputing stored values** — migrations `0004`/`0005`/`0006`/`0007`/`0008`
-(data-and-api.md) NULL `ascent_mean_vspeed` so the next sync's local
+`activityMetrics(streams, params=STANDARD_METRIC_PARAMS) → {meanVSpeed, gainM,
+descentLossM}|null` — the three stored ranking metrics. **Despikes altitude**,
+runs `detectAscents` + `detectDescents` + `detectPauses` with `params`
+(`MetricParams {minGainM, descentToleranceM, pauseThresholdS, maxAscentVSpeed}`),
+then aggregates. `STANDARD_METRIC_PARAMS` (the default) mirrors the segment fields
+of `DEFAULT_SETTINGS`; the server passes each athlete's OWN settings via
+`metricParamsFromSettings(settings)`, so the stored metric matches that athlete's
+chart (`computeVSpeedModel` uses the identical params). `meanVSpeed` (of
+`partitionSegments(ascents, params.maxAscentVSpeed).kept`) drives the "Best ascent
+speed" sort/badge; `gainM` (the summed kept-ascent gain, **lifts and sub-minGain
+bumps excluded**) drives the "elevation" sort/badge AND the list's displayed D+,
+replacing Strava's raw `total_elevation_gain`; `descentLossM` (the summed
+magnitude of **all** detected descents — **NOT lift-capped**, so fast ski/downhill
+descents count in full) drives the "descent" sort and the list's displayed D−.
+`activityAscentMean(streams, params?)` is a thin wrapper returning just
+`meanVSpeed`. Returns `null` with no altitude **or when time/distance/altitude
+lengths disagree** (unrankable, never throws), `0` per metric when nothing
+qualifies. All three persist to `activities.ascentMeanVSpeed` / `ascentGainM` /
+`descentLossM` via the shared defensive wrapper `metricsFor(streams, params, log?)`
+(`apps/server/src/metrics/recompute.ts`) — a malformed stream set degrades to
+`{0,0,0}` instead of aborting a sync or a settings save.
+
+**Settings changes re-rank.** The `METRIC_SETTING_KEYS` (`ascentMinGainM`,
+`ascentDescentToleranceM`, `pauseThresholdS`, `liftMaxVSpeed`) feed the stored
+metrics; a `PUT /settings` changing any of them runs `recomputeAllMetrics(db,
+athleteId, params)` over the athlete's done activities (local, no API), so the
+sort/badges/list figures follow their settings, and the sync path
+(`storeStreams`, `computeMissingMetrics`) computes with current settings too so a
+later sync never reverts them. **Changing this algorithm (or pause detection —
+pauses feed the mean) requires recomputing stored values** — migrations
+`0004`–`0009` (data-and-api.md) NULL `ascent_mean_vspeed` so the next sync's local
 `computeMissingMetrics` refills ALL metric columns with no API calls
-(`listMissingMetrics` keys off the NULL speed column).
+(`listMissingMetrics` keys off the NULL speed column); `0009` covers the
+settings-aware metric.
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 

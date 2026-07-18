@@ -10,3 +10,5 @@ data/
 playwright-report/
 test-results/
 .DS_Store
+# Claude Code transient agent worktrees
+.claude/worktrees/

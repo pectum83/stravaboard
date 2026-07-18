@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { activityMetrics, DEFAULT_SETTINGS, metricParamsFromSettings } from '@stravaboard/shared'
 import {
   countStreamsMissingLatlng,
   getActivity,
@@ -6,6 +7,7 @@ import {
   upsertActivity,
   type ActivityRow,
 } from '../repositories/activities.repo.js'
+import { saveSettings } from '../repositories/settings.repo.js'
 import { getStreams, saveStreams } from '../repositories/streams.repo.js'
 import { getSyncState } from '../repositories/syncState.repo.js'
 import { StravaClient } from '../strava/client.js'
@@ -155,6 +157,42 @@ describe('SyncService', () => {
     // A pure climb has no descent.
     expect(getActivity(db, 300)?.descentLossM).toBe(0)
     expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
+  })
+
+  it('computes the stored metric with the athlete’s current settings', async () => {
+    const db = connectedDb()
+    // Non-default: a high pause threshold, so a 100 s standstill is counted
+    // rather than excluded (the default 30 s would exclude it).
+    saveSettings(db, 1, { ...DEFAULT_SETTINGS, pauseThresholdS: 150 })
+
+    // Legacy row: a climb interrupted by a 100 s standstill.
+    upsertActivity(db, { ...makeRow(300, '2025-01-01T08:00:00Z'), streamsStatus: 'done' })
+    const time: number[] = [],
+      distance: number[] = [],
+      altitude: number[] = []
+    const add = (t: number, d: number, a: number) => {
+      time.push(t)
+      distance.push(d)
+      altitude.push(a)
+    }
+    for (let t = 0; t <= 500; t++) add(t, t * 6, 100 + t * 0.2)
+    for (let k = 1; k <= 100; k++) add(500 + k, 500 * 6, 100 + 500 * 0.2)
+    for (let t = 501; t <= 1000; t++) add(t + 100, t * 6, 100 + t * 0.2)
+    const streams = { time, distance, altitude, latlng: [] as [number, number][] }
+    saveStreams(db, 300, streams, '2025')
+
+    const { sync } = makeSync(db, { activities: [] })
+    await runSync(sync)
+
+    // The local backfill used pauseThresholdS=150 (pause counted), not the fixed
+    // default of 30 (pause excluded) — the stored metric follows the settings.
+    const withSettings = activityMetrics(
+      streams,
+      metricParamsFromSettings({ ...DEFAULT_SETTINGS, pauseThresholdS: 150 }),
+    )!
+    const withDefault = activityMetrics(streams, metricParamsFromSettings(DEFAULT_SETTINGS))!
+    expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeCloseTo(withSettings.meanVSpeed, 4)
+    expect(withSettings.meanVSpeed).not.toBeCloseTo(withDefault.meanVSpeed, 1)
   })
 
   it('stores total descent (not speed-capped) so a fast ski descent still counts', async () => {

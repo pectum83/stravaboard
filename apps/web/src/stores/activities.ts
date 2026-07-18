@@ -76,6 +76,15 @@ export const useActivitiesStore = defineStore('activities', () => {
     await loadMore()
   }
 
+  /**
+   * Reload the list, badges and header totals together — after a change that can
+   * re-rank activities (e.g. a metric-affecting settings change the server has
+   * just recomputed). The current sort/filter and selection are preserved.
+   */
+  async function reloadRankings(): Promise<void> {
+    await Promise.all([reload(), loadBadges(), loadAggregate()])
+  }
+
   /** Merge a filter change and reload the list and badges from the first page. */
   async function setFilters(patch: Partial<ActivityFilters>): Promise<void> {
     // A sport-type change (including Clear) is a deliberate choice — respect it.
@@ -174,6 +183,7 @@ export const useActivitiesStore = defineStore('activities', () => {
     aggregate,
     loadFirstPage,
     loadMore,
+    reloadRankings,
     setFilters,
     setSort,
     select,

@@ -243,6 +243,22 @@ export function listMissingMetrics(db: Db, athleteId: number, limit: number): nu
 }
 
 /**
+ * Every one of an athlete's done activities that has a stored stream set — the
+ * full recompute set when a metric-affecting setting changes. Unlike
+ * `listMissingMetrics` it ignores whether a metric is already stored (all are
+ * replaced); returned in one shot, ids are cheap even for a large history.
+ */
+export function listDoneActivityIds(db: Db, athleteId: number): number[] {
+  return db
+    .select({ id: activities.id })
+    .from(activities)
+    .innerJoin(activityStreams, eq(activityStreams.activityId, activities.id))
+    .where(and(eq(activities.athleteId, athleteId), eq(activities.streamsStatus, 'done')))
+    .all()
+    .map((r) => r.id)
+}
+
+/**
  * Whole-filter totals for the activity list: how many activities match `filter`
  * and their cumulated lift-excluded climbing gain (m) — the same D+ shown per
  * row (NULL metrics count as 0), so the total agrees with the visible figures.

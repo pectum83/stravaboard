@@ -23,7 +23,10 @@ totalAscentGainM}`), `sportTypes()`, `refreshActivity(id)` (POST),
   Errors → `ApiError(status)`.
 - `stores/settings.ts` (Pinia setup store) — `settings` seeded from
   `DEFAULT_SETTINGS`; `load()` GET; `update(patch)` applies immediately,
-  **debounced 500 ms PUT** of the full object; `saveError`.
+  **debounced 500 ms PUT** of the full object; `saveError`. Tracks whether any
+  change coalesced into the pending PUT touches a `METRIC_SETTING_KEYS` field and,
+  on a successful save, bumps `metricsRecomputedAt` (the server recomputed the
+  stored metrics) — DashboardPage watches it to reload the list/badges/totals.
 - `stores/activities.ts` — list + composite-cursor pagination (PAGE_SIZE 50) +
   selection
   - **filters**: `filters: ActivityFilters {q, from, to, sportType}` ('' = off),
@@ -36,7 +39,9 @@ totalAscentGainM}`), `sportTypes()`, `refreshActivity(id)` (POST),
     `loadBadges()`/`loadAggregate()` send the active filter (`activeFilterParams()`)
     so both reflect only the visible set. `loadFirstPage`, `setFilters` and
     `refreshActivity` reload badges **and** the aggregate (a reload can change a
-    ranking or the totals). `reload()` re-runs the current query in place.
+    ranking or the totals). `reload()` re-runs the current query in place;
+    `reloadRankings()` = `reload` + `loadBadges` + `loadAggregate` (after a change
+    that can re-rank, e.g. a metric-affecting settings change the server recomputed).
   - **default sport**: `loadFirstPage` loads sport types first, then opens on
     `DEFAULT_SPORT_TYPE = 'Hike'` when it's among them and the user hasn't
     touched the sport filter (`sportTypeTouched`, set by any `setFilters` sport
@@ -70,7 +75,9 @@ right) then `.visuals` flex row = `.chart-area` (flex 2, `VerticalSpeedChart`) +
 computeVSpeedModel(streams, settings)` once (null unless streams have altitude);
 `hoverIndex` ref bridges chart → map. `ActivityStats` also receives the selected
 summary's distance/elapsed/moving. Fetches `api.config()` on mount for the
-MapTiler key.
+MapTiler key. Watches `settingsStore.metricsRecomputedAt` and calls
+`activitiesStore.reloadRankings()` so a metric-affecting settings change refreshes
+the list/badges/totals (the chart already reacts to `settings` via `model`).
 
 ## Chart
 

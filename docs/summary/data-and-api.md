@@ -30,18 +30,20 @@ applied automatically by `openDb`).
   indexed with start_date_epoch), name, sportType, startDate (ISO),
   startDateEpoch, distanceM, movingTimeS, elapsedTimeS, totalElevationGainM,
   **ascentMeanVSpeed** (real, nullable — whole-activity pause-excluded mean
-  ascent speed m/h computed from streams with FIXED `STANDARD_SEGMENT_PARAMS`,
-  so rankings are settings-independent; NULL = not computed yet, 0 = no
-  qualifying ascent; index `idx_activities_athlete_vspeed` on
-  (athlete_id, ascent_mean_vspeed) drives the ranked sort),
+  ascent speed m/h computed from streams with the athlete's segment settings
+  (`metricParamsFromSettings`, default `STANDARD_METRIC_PARAMS`), so it matches
+  their chart; NULL = not computed yet, 0 = no qualifying ascent; index
+  `idx_activities_athlete_vspeed` on (athlete_id, ascent_mean_vspeed) drives the
+  ranked sort),
   **ascentGainM** (real, nullable — lift-excluded climbing gain m: Σ of the kept
-  ascent segments with FIXED params, lifts/artefacts + sub-30 m bumps removed;
-  drives the `elevation` sort/badge and the list's D+, NOT Strava's raw
+  ascent segments with the athlete's settings, lifts/artefacts + sub-minGain bumps
+  removed; drives the `elevation` sort/badge and the list's D+, NOT Strava's raw
   total_elevation_gain; NULL = not computed, 0 = no qualifying ascent),
   **descentLossM** (real, nullable — total descent m: Σ magnitude of ALL detected
-  descents with FIXED params, **NOT lift-capped** so fast ski descents count;
-  drives the `descent` sort and the list's D−; index `idx_activities_athlete_descent`
-  on (athlete_id, descent_loss_m); NULL = not computed, 0 = no qualifying descent),
+  descents with the athlete's settings, **NOT lift-capped** so fast ski descents
+  count; drives the `descent` sort and the list's D−; index
+  `idx_activities_athlete_descent` on (athlete_id, descent_loss_m); NULL = not
+  computed, 0 = no qualifying descent),
   streamsStatus `'pending'|'done'|'none'`, rawSummary (full Strava JSON kept verbatim).
 - `activity_streams`: activityId (PK, FK), time / distance (JSON number[] text),
   altitude (JSON or NULL), **latlng** (JSON `[lat,lng][]`; **SQL NULL = not
@@ -50,7 +52,9 @@ applied automatically by `openDb`).
   (checkpoint), status, error.
 - `settings`: key/value JSON — key `settings:<athleteId>`, merged over
   `DEFAULT_SETTINGS` on read (so new setting fields get defaults for free;
-  stored values are never rewritten).
+  stored values are never rewritten). Changing a `METRIC_SETTING_KEYS` field
+  (min-gain / tolerance / pause threshold / pause radius / lift cap) recomputes the athlete's
+  stored metrics — see `PUT /settings`.
 - Migration `0002_multi_athlete.sql` was HAND-WRITTEN (data-preserving table
   rebuilds + backfill of the single v2 athlete); its snapshot/journal were
   hand-edited too — drizzle-kit generate needs a TTY for rename prompts.
@@ -77,6 +81,11 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   a new id/prevId, schema unchanged) nulls `ascent_mean_vspeed` after the pause
   detector gained dead-GPS + vertical-movement validation (pauses feed the
   pause-excluded mean). Same "sync after deploying" caveat.
+- Migration `0009_recompute_settings_metric.sql` (NULL-reset only; snapshot =
+  0008's with a new id/prevId, schema unchanged) nulls `ascent_mean_vspeed` after
+  the stored metrics became **settings-aware** (computed from each athlete's
+  segment settings, not fixed params). The next sync recomputes all three with the
+  athlete's current settings. Same "sync after deploying" caveat.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 
@@ -97,8 +106,9 @@ athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
   list header — `SUM(COALESCE(ascent_gain_m,0))`);
   `setActivityMetrics(db, id, meanVSpeed, gainM, descentLossM)` writes all three
   metric columns, `listMissingMetrics` (rows with streams but NULL speed metric,
-  for local backfill of all three). Filter predicates are shared by the list and
-  the rankings via `filterConditions(filter)`. `listSportTypes` (distinct,
+  for local backfill of all three), `listDoneActivityIds` (ALL the athlete's
+  done-with-streams ids — the full recompute set for a settings change). Filter
+  predicates are shared by the list and the rankings via `filterConditions(filter)`. `listSportTypes` (distinct,
   sorted, **only analyzable types**: ≥1 activity with `totalElevationGainM > 0`),
   `listPendingStreams`/`count…`, `listStreamsMissingLatlng`/
   `countStreamsMissingLatlng` (streams_status='done' AND latlng IS NULL, oldest
@@ -120,8 +130,12 @@ athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
 - `GET/PUT /settings` — zod: instantWindowS 1–600, shortWindowS 1–3600,
   longWindowS 1–7200, ascentMinGainM 1–1000, ascentDescentToleranceM 0–500,
   pauseThresholdS int 5–600, pauseRadiusM int 2–15 (stationary radius, default
-  5), slopeWindowM int 10–2000, liftMaxVSpeed int 500–6000 (chart lift/artefact
-  cap, default 1400). PUT requires the full object.
+  5), slopeWindowM int 10–2000, liftMaxVSpeed int 500–6000 (lift/artefact cap,
+  default 1400). PUT requires the full object. When it changes a
+  `METRIC_SETTING_KEYS` field (ascentMinGainM / ascentDescentToleranceM /
+  pauseThresholdS / pauseRadiusM / liftMaxVSpeed) it runs `recomputeAllMetrics`
+  for the athlete (local, no API) before returning, so the sort/badges/list
+  figures match the chart; window/slope-only changes skip it.
 - `POST /sync` (202 fire-and-forget); `GET /sync/status` → `SyncStatus`
   (state, fetchedActivities, pendingStreams, pendingLatlngBackfill,
   rateLimitResumeAt?, error?).
@@ -180,9 +194,11 @@ sportType?: enum STRAVA_SPORT_TYPES}`, at least one field (else 400).
      save, mark done (404 → 'none'), then advance checkpoint. Stores latlng
      (missing stream → `[]`), so new syncs never create NULL latlng. Saving
      goes through `storeStreams`, which also computes and persists the three
-     metrics (`activityMetrics(streams)` via `SyncService.metricsFor`, → 0/0/0
-     on failure). `runFor` starts with `computeMissingMetrics` — a local, no-API
-     backfill over `listMissingMetrics` so legacy rows get the metrics.
+     metrics with the athlete's current settings (`metricsFor(streams, params)`
+     from `metrics/recompute.ts`, → 0/0/0 on failure; `params =
+metricParamsFromSettings(getSettings(athleteId))`). `runFor` starts with
+     `computeMissingMetrics` — a local, no-API backfill over `listMissingMetrics`
+     so legacy / NULL-reset rows get the metrics with those same settings.
   3. `backfillLatlng` — batches of `listStreamsMissingLatlng(50)`, re-fetches
      the full stream set (`refetchStreamsFor`); on 404 rewrites existing
      streams with `latlng: []`. **Invariant: every visit writes non-NULL

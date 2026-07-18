@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_SETTINGS } from '../types.js'
 import type { Ascent } from '../vspeed/ascents.js'
 import {
   activityAscentMean,
   activityMetrics,
   aggregateSegments,
   MAX_HUMAN_VSPEED,
+  metricParamsFromSettings,
   partitionSegments,
+  STANDARD_METRIC_PARAMS,
 } from '../vspeed/stats.js'
 import { flat, insertPause, ramp, spike, withLatlng } from './fixtures.js'
 
@@ -134,5 +137,50 @@ describe('activityMetrics (mean speed + lift-excluded gain + total descent)', ()
     expect(
       activityMetrics({ time: [0, 1], distance: [0, 1], altitude: null, latlng: null }),
     ).toBeNull()
+  })
+})
+
+describe('activityMetrics (custom parameters)', () => {
+  it('defaults to STANDARD_METRIC_PARAMS, which mirrors DEFAULT_SETTINGS', () => {
+    expect(metricParamsFromSettings(DEFAULT_SETTINGS)).toEqual(STANDARD_METRIC_PARAMS)
+    const s = insertPause(withLatlng(ramp(1000, 6, 0.2)), 500, 100)
+    expect(activityMetrics(s)).toEqual(activityMetrics(s, STANDARD_METRIC_PARAMS))
+  })
+
+  it('excludes a pause only when its threshold sits below the standstill', () => {
+    // 200 m over 1000 s of climbing with a 100 s standstill inserted.
+    const s = insertPause(withLatlng(ramp(1000, 6, 0.2)), 500, 100)
+    // Threshold 30 s < 100 s standstill → excluded → 200 m / 1000 s = 720 m/h.
+    const excluded = activityAscentMean(s, { ...STANDARD_METRIC_PARAMS, pauseThresholdS: 30 })
+    // Threshold 150 s > 100 s standstill → counted → 200 m / 1100 s = 654.5 m/h.
+    const counted = activityAscentMean(s, { ...STANDARD_METRIC_PARAMS, pauseThresholdS: 150 })
+    expect(excluded).toBeCloseTo(720, 3)
+    expect(counted).toBeCloseTo(654.545, 2)
+    expect(excluded!).toBeGreaterThan(counted!)
+  })
+
+  it('honours the minimum-gain parameter', () => {
+    const climb = { ...ramp(1000, 6, 0.2), latlng: null } // 200 m gain
+    expect(activityMetrics(climb, { ...STANDARD_METRIC_PARAMS, minGainM: 30 })!.gainM).toBeCloseTo(
+      200,
+      4,
+    )
+    // A 250 m floor rejects the 200 m climb entirely.
+    expect(activityMetrics(climb, { ...STANDARD_METRIC_PARAMS, minGainM: 250 })).toEqual({
+      meanVSpeed: 0,
+      gainM: 0,
+      descentLossM: 0,
+    })
+  })
+
+  it('honours the ascent lift cap', () => {
+    const fast = { ...ramp(600, 6, 1200 / 3600), latlng: null } // 1200 m/h, 200 m
+    expect(activityMetrics(fast, STANDARD_METRIC_PARAMS)!.meanVSpeed).toBeCloseTo(1200, 4)
+    // A 1000 m/h cap treats the 1200 m/h climb as a lift → nothing rankable.
+    expect(activityMetrics(fast, { ...STANDARD_METRIC_PARAMS, maxAscentVSpeed: 1000 })).toEqual({
+      meanVSpeed: 0,
+      gainM: 0,
+      descentLossM: 0,
+    })
   })
 })
