@@ -4,3 +4,4 @@ coverage/
 apps/server/src/db/migrations/
 playwright-report/
 test-results/
+.claude/worktrees/
