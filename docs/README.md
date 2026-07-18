@@ -31,8 +31,12 @@ filtered view badges its own best — and the mean ascent speed is shown on ever
 activity. The sport-type filter lists only **analyzable** sports (those with
 elevation data), so indoor/flat activity types don't clutter it. A
 **"↻ Reload from Strava"** button
-re-fetches the selected activity (data and streams) — use it after renaming,
-cropping or otherwise editing an activity on strava.com. The layout is
+re-fetches the selected activity (data and streams) — use it after cropping or
+otherwise editing an activity on strava.com. Each activity can also be
+**renamed and re-typed inline**: hover a row (or select it on a phone) and click
+the ✎ pencil to edit its name and sport type. The change is **written straight
+back to Strava** — it appears in your feed and the mobile app — so it needs the
+write permission; the first time, log out and reconnect to grant it. The layout is
 responsive: on phones the
 list, chart and map stack vertically and the chart switches to a compact
 rendering.

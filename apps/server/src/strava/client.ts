@@ -48,12 +48,12 @@ export class StravaClient {
       page: String(page),
       per_page: String(perPage),
     })
-    return this.get<StravaSummaryActivity[]>(athleteId, `/athlete/activities?${params}`)
+    return this.request<StravaSummaryActivity[]>(athleteId, `/athlete/activities?${params}`)
   }
 
   /** Detailed activity — a superset of the summary fields we store. */
   async getActivity(athleteId: number, activityId: number) {
-    return this.get<StravaSummaryActivity>(athleteId, `/activities/${activityId}`)
+    return this.request<StravaSummaryActivity>(athleteId, `/activities/${activityId}`)
   }
 
   async getStreams(athleteId: number, activityId: number) {
@@ -61,18 +61,50 @@ export class StravaClient {
       keys: 'time,distance,altitude,latlng',
       key_by_type: 'true',
     })
-    return this.get<StravaStreamSet>(athleteId, `/activities/${activityId}/streams?${params}`)
+    return this.request<StravaStreamSet>(athleteId, `/activities/${activityId}/streams?${params}`)
   }
 
-  private async get<T>(athleteId: number, path: string): Promise<T> {
+  /**
+   * Update an activity on Strava (UpdateActivity, `PUT /activities/{id}`) and
+   * return the updated summary. Requires the `activity:write` scope — without
+   * it Strava replies 401/403, surfaced as a StravaApiError for the caller to
+   * turn into a "reconnect" message.
+   */
+  async updateActivity(
+    athleteId: number,
+    activityId: number,
+    patch: { name?: string; sport_type?: string },
+  ): Promise<StravaSummaryActivity> {
+    return this.request<StravaSummaryActivity>(athleteId, `/activities/${activityId}`, {
+      method: 'PUT',
+      body: patch,
+    })
+  }
+
+  /**
+   * One request through the rate limiter with a fresh per-athlete token and
+   * uniform status→error mapping. GET by default; pass a JSON `body` to send a
+   * mutation (adds the content-type header and serialises it).
+   */
+  private async request<T>(
+    athleteId: number,
+    path: string,
+    init: { method?: string; body?: unknown } = {},
+  ): Promise<T> {
     const wait = this.rateLimiter.waitUntil(this.nowMs())
     if (wait !== null) throw new RateLimitError(wait)
 
     const token = await ensureFreshToken(this.config, this.db, athleteId, this.fetchImpl, () =>
       Math.floor(this.nowMs() / 1000),
     )
+    const hasBody = init.body !== undefined
     const res = await this.fetchImpl(`${this.config.STRAVA_API_BASE}${path}`, {
-      headers: { authorization: `Bearer ${token}` },
+      method: init.method ?? 'GET',
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(hasBody ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
     })
     this.rateLimiter.update(res.headers, this.nowMs())
 

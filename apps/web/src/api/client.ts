@@ -67,6 +67,12 @@ export const api = {
   },
   refreshActivity: (activityId: number) =>
     request<ActivitySummary>(`/api/activities/${activityId}/refresh`, { method: 'POST' }),
+  updateActivity: (activityId: number, patch: { name?: string; sportType?: string }) =>
+    request<ActivitySummary>(`/api/activities/${activityId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
   config: () => request<{ maptilerKey: string | null }>('/api/config'),
   streams: (activityId: number) =>
     request<ActivityStreams>(`/api/activities/${activityId}/streams`),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { ActivityBadges, ActivitySummary } from '@stravaboard/shared'
+import { computed, ref } from 'vue'
+import { type ActivityBadges, type ActivitySummary, STRAVA_SPORT_TYPES } from '@stravaboard/shared'
+import { useActivitiesStore } from '../stores/activities'
 
 const props = defineProps<{
   activities: ActivitySummary[]
@@ -15,8 +16,71 @@ const emit = defineEmits<{
   loadMore: []
 }>()
 
+const store = useActivitiesStore()
+
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const MEDALS = ['🥇', '🥈', '🥉']
+
+/** Inline rename / re-type state — one row at a time. */
+const editingId = ref<number | null>(null)
+const draftName = ref('')
+const draftSport = ref('')
+const saving = ref(false)
+const editError = ref<string | null>(null)
+
+/** Focus + select the name field as soon as the edit form mounts. */
+function focusNameInput(el: unknown): void {
+  if (el instanceof HTMLInputElement) {
+    el.focus()
+    el.select()
+  }
+}
+
+/** Options for the picker: the standard set plus the current value if legacy. */
+const sportOptions = computed(() =>
+  STRAVA_SPORT_TYPES.includes(draftSport.value as never)
+    ? [...STRAVA_SPORT_TYPES]
+    : [draftSport.value, ...STRAVA_SPORT_TYPES],
+)
+
+function startEdit(activity: ActivitySummary): void {
+  editingId.value = activity.id
+  draftName.value = activity.name
+  draftSport.value = activity.sportType
+  editError.value = null
+}
+
+function cancelEdit(): void {
+  editingId.value = null
+  editError.value = null
+}
+
+async function saveEdit(activity: ActivitySummary): Promise<void> {
+  if (saving.value) return
+  const name = draftName.value.trim()
+  if (name === '') {
+    editError.value = 'Name cannot be empty'
+    return
+  }
+  // Only send fields that actually changed.
+  const patch: { name?: string; sportType?: string } = {}
+  if (name !== activity.name) patch.name = name
+  if (draftSport.value !== activity.sportType) patch.sportType = draftSport.value
+  if (patch.name === undefined && patch.sportType === undefined) {
+    cancelEdit()
+    return
+  }
+  saving.value = true
+  editError.value = null
+  try {
+    await store.editActivity(activity.id, patch)
+    editingId.value = null
+  } catch (err) {
+    editError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    saving.value = false
+  }
+}
 
 /** Per activity id: the medals it holds, with a human title for the tooltip. */
 const badgeMap = computed(() => {
@@ -45,40 +109,78 @@ function km(m: number): string {
 <template>
   <div class="activity-list">
     <ul>
-      <li v-for="activity in activities" :key="activity.id">
-        <button
-          type="button"
-          class="item"
-          :class="{
-            selected: activity.id === selectedId,
-            'no-streams': activity.streamsStatus !== 'done',
-          }"
-          @click="emit('select', activity.id)"
+      <li v-for="activity in activities" :key="activity.id" class="row">
+        <form
+          v-if="editingId === activity.id"
+          class="edit"
+          @submit.prevent="saveEdit(activity)"
+          @keydown.esc="cancelEdit"
         >
-          <span class="name">
-            <span v-if="badgeMap.get(activity.id)" class="medals">
-              <span
-                v-for="b in badgeMap.get(activity.id)"
-                :key="b.title"
-                class="medal"
-                :title="b.title"
-                >{{ b.medal }}</span
-              >
+          <input
+            :ref="focusNameInput"
+            v-model="draftName"
+            class="edit-name"
+            type="text"
+            maxlength="255"
+            aria-label="Activity name"
+          />
+          <select v-model="draftSport" class="edit-sport" aria-label="Sport type">
+            <option v-for="type in sportOptions" :key="type" :value="type">{{ type }}</option>
+          </select>
+          <div class="edit-actions">
+            <button type="submit" class="save" :disabled="saving">
+              {{ saving ? 'Saving…' : 'Save' }}
+            </button>
+            <button type="button" class="cancel" :disabled="saving" @click="cancelEdit">
+              Cancel
+            </button>
+          </div>
+          <p v-if="editError" class="edit-error">{{ editError }}</p>
+        </form>
+        <template v-else>
+          <button
+            type="button"
+            class="item"
+            :class="{
+              selected: activity.id === selectedId,
+              'no-streams': activity.streamsStatus !== 'done',
+            }"
+            @click="emit('select', activity.id)"
+          >
+            <span class="name">
+              <span v-if="badgeMap.get(activity.id)" class="medals">
+                <span
+                  v-for="b in badgeMap.get(activity.id)"
+                  :key="b.title"
+                  class="medal"
+                  :title="b.title"
+                  >{{ b.medal }}</span
+                >
+              </span>
+              {{ activity.name }}
             </span>
-            {{ activity.name }}
-          </span>
-          <span class="meta">
-            {{ formatDate(activity.startDate) }} · {{ activity.sportType }}
-          </span>
-          <span class="meta">
-            {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.totalElevationGainM) }} m
-            <template v-if="activity.ascentMeanVSpeed">
-              · ↑ {{ Math.round(activity.ascentMeanVSpeed) }} m/h
-            </template>
-            <em v-if="activity.streamsStatus === 'none'" class="badge">no elevation data</em>
-            <em v-else-if="activity.streamsStatus === 'pending'" class="badge">syncing…</em>
-          </span>
-        </button>
+            <span class="meta">
+              {{ formatDate(activity.startDate) }} · {{ activity.sportType }}
+            </span>
+            <span class="meta">
+              {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.totalElevationGainM) }} m
+              <template v-if="activity.ascentMeanVSpeed">
+                · ↑ {{ Math.round(activity.ascentMeanVSpeed) }} m/h
+              </template>
+              <em v-if="activity.streamsStatus === 'none'" class="badge">no elevation data</em>
+              <em v-else-if="activity.streamsStatus === 'pending'" class="badge">syncing…</em>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="edit-toggle"
+            title="Rename / change sport type (writes to Strava)"
+            aria-label="Edit activity"
+            @click="startEdit(activity)"
+          >
+            ✎
+          </button>
+        </template>
       </li>
     </ul>
     <p v-if="!loading && activities.length === 0" class="empty">No activities yet.</p>
@@ -106,6 +208,10 @@ ul {
   padding: 0;
 }
 
+.row {
+  position: relative;
+}
+
 .item {
   display: flex;
   flex-direction: column;
@@ -118,6 +224,90 @@ ul {
   text-align: left;
   cursor: pointer;
   font: inherit;
+}
+
+/* Pencil affordance: hidden until the row is hovered or already selected, so
+   the list stays clean but editing is one click away. */
+.edit-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: none;
+  padding: 2px 6px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  background: #fcfcfb;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: #52514e;
+}
+
+.row:hover .edit-toggle,
+.item.selected + .edit-toggle {
+  display: block;
+}
+
+.edit-toggle:hover {
+  background: #f0efec;
+}
+
+.edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e1e0d9;
+  background: #e3edfa;
+}
+
+.edit-name,
+.edit-sport {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  background: white;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-actions .save,
+.edit-actions .cancel {
+  padding: 4px 12px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.edit-actions .save {
+  background: #fc5200; /* Strava brand orange */
+  border-color: #fc5200;
+  color: white;
+  font-weight: 600;
+}
+
+.edit-actions .save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.edit-actions .cancel {
+  background: white;
+  color: #52514e;
+}
+
+.edit-error {
+  margin: 0;
+  color: #d03b3b;
+  font-size: 0.8rem;
 }
 
 .item:hover {

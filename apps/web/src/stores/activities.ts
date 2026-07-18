@@ -135,6 +135,20 @@ export const useActivitiesStore = defineStore('activities', () => {
     await loadBadges()
   }
 
+  /**
+   * Rename / re-type one activity (written through to Strava) and reflect it in
+   * the list. A sport-type change can alter the sport-type filter set, so
+   * refresh that too. Throws on failure so the caller can surface the error.
+   */
+  async function editActivity(
+    id: number,
+    patch: { name?: string; sportType?: string },
+  ): Promise<void> {
+    const updated = await api.updateActivity(id, patch)
+    activities.value = activities.value.map((a) => (a.id === id ? updated : a))
+    if (patch.sportType !== undefined) await loadSportTypes()
+  }
+
   return {
     activities,
     selectedId,
@@ -151,5 +165,6 @@ export const useActivitiesStore = defineStore('activities', () => {
     setSort,
     select,
     refreshActivity,
+    editActivity,
   }
 })

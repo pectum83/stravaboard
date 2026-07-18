@@ -13,7 +13,7 @@ export function buildAuthorizeUrl(config: Config): string {
     client_id: config.STRAVA_CLIENT_ID,
     response_type: 'code',
     redirect_uri: `${config.APP_BASE_URL}/api/auth/strava/callback`,
-    scope: 'activity:read_all',
+    scope: 'activity:read_all,activity:write',
     approval_prompt: 'auto',
   })
   return `${config.STRAVA_OAUTH_BASE}/authorize?${params}`

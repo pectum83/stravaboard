@@ -18,7 +18,8 @@ ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
   `badges(params?)` (`ActivityBadgeParams` = the list filter minus paging/sort →
   `ActivityBadges`), `sportTypes()`, `refreshActivity(id)` (POST),
   `config()` (`{maptilerKey}`), `streams(id)`, `settings`/`saveSettings`,
-  `startSync`, `syncStatus`. Errors → `ApiError(status)`.
+  `startSync`, `syncStatus`, `updateActivity(id, {name?, sportType?})` (PATCH).
+  Errors → `ApiError(status)`.
 - `stores/settings.ts` (Pinia setup store) — `settings` seeded from
   `DEFAULT_SETTINGS`; `load()` GET; `update(patch)` applies immediately,
   **debounced 500 ms PUT** of the full object; `saveError`.
@@ -44,6 +45,9 @@ ActivitySort 'date'|'ascentSpeed'|'elevation'`, omitted when `'date'`),
   which evicts the current id from the cache and refetches.
 - Store `refreshActivity(id)` calls the refresh endpoint and replaces the
   summary in place (throws on failure — callers surface the error).
+- Store `editActivity(id, {name?, sportType?})` PATCHes the activity (written
+  through to Strava), replaces the summary in place, and reloads `sportTypes`
+  when the sport type changed (throws on failure).
 
 ## Auth UX
 
@@ -115,7 +119,13 @@ maptilerKey|null}`. States: `latlng===null` → "No GPS trace" text; WebGL
 - `ActivityList.vue` — props activities/selectedId/hasMore/loading/**badges**,
   emits select/loadMore. Shows `↑ <n> m/h` (ascentMeanVSpeed) in the meta line
   and 🥇🥈🥉 medals before the name via `badgeMap` (id → medals, with a `#N
-<ranking>` title). Empty text: "No activities yet.".
+<ranking>` title). Empty text: "No activities yet.". **Inline edit**: a per-row
+  `.edit-toggle` pencil (revealed on row hover or when the row is selected —
+  works on touch via selection) swaps the row for a `form.edit` (name input +
+  sport `<select>` from `STRAVA_SPORT_TYPES`, Save/Cancel, Esc cancels). Save
+  drives `store.editActivity` directly (like SettingsPanel uses the settings
+  store), sending only changed fields; local `saving`/`editError` state, form
+  stays open on failure.
 - `ActivityFilters.vue` — props `{filters, sportTypes, sort}`, emits
   `update(patch)` + `update:sort`. Wrapped in a collapsible `<details class=
 "filters">`; the `<summary>` shows the active sort + "· filtered" note so it

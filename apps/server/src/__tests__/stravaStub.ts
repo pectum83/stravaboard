@@ -8,6 +8,8 @@ export interface StravaStubOptions {
   noStreams?: number[]
   /** Return 429 for this many API requests before behaving normally. */
   rateLimit429Count?: number
+  /** HTTP status returned by the UpdateActivity (PUT) endpoint instead of 200. */
+  updateStatus?: number
   /** Athlete returned by the token endpoint (OAuth code exchange / refresh). */
   athlete?: { id: number; firstname?: string; lastname?: string }
 }
@@ -85,6 +87,14 @@ export function stravaStub(opts: StravaStubOptions = {}) {
     const detailMatch = url.pathname.match(/\/activities\/(\d+)$/)
     if (detailMatch) {
       const activity = activities.find((a) => a.id === Number(detailMatch[1]))
+      // UpdateActivity: apply the JSON patch and echo the updated summary,
+      // mirroring Strava's canonical response.
+      if (init?.method === 'PUT') {
+        if (opts.updateStatus) return new Response('error', { status: opts.updateStatus })
+        if (!activity) return new Response('not found', { status: 404 })
+        Object.assign(activity, JSON.parse(String(init.body ?? '{}')))
+        return Response.json(activity)
+      }
       return activity ? Response.json(activity) : new Response('not found', { status: 404 })
     }
 

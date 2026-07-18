@@ -46,8 +46,9 @@ pnpm e2e            # playwright only
 - `apps/server/src/db/client.ts` `openDb(path)` — opens sqlite (`:memory:` in
   tests), WAL, FK on, **applies drizzle migrations automatically** from
   `src/db/migrations/` (copied next to the bundle at build time).
-- OAuth: single athlete, tokens in DB, refresh rotation persisted
-  (`src/strava/oauth.ts`). Rate limiting from Strava response headers
+- OAuth: per-athlete tokens in DB, refresh rotation persisted
+  (`src/strava/oauth.ts`); scope `activity:read_all,activity:write` (write
+  enables activity rename / re-type). Rate limiting from Strava response headers
   (`src/sync/rateLimiter.ts`).
 
 ## Deployment

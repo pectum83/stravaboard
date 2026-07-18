@@ -3,8 +3,11 @@
 ## Multi-user model (family)
 
 Every family member logs in with their own Strava account. Identity = Strava
-OAuth; a **signed session cookie** (`session`, `@fastify/cookie`, secret
-`COOKIE_SECRET`, ~180 d) holds the athlete id. `src/auth/session.ts`
+OAuth; scopes requested = **`activity:read_all,activity:write`** (write is
+needed to rename / re-type activities — see `PATCH /activities/:id`; athletes
+who authorized before write was added must reconnect once). A **signed session
+cookie** (`session`, `@fastify/cookie`, secret `COOKIE_SECRET`, ~180 d) holds
+the athlete id. `src/auth/session.ts`
 registers an onRequest guard: every `/api/*` route except `/api/auth/*` and
 `/api/health` 401s without a valid cookie and sets `req.athleteId`.
 `ALLOWED_ATHLETE_IDS` (comma-separated, empty = anyone) gates the OAuth
@@ -105,6 +108,14 @@ c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   (for activities edited/cropped on strava.com); 200 `ActivitySummary`,
   404 unknown locally OR gone from Strava (local data untouched), 429 with
   `resumeAt` on rate limit. Streams gone → status 'none', stale rows deleted.
+- `PATCH /activities/:id` → rename / re-type, **written through to Strava**
+  (UpdateActivity `PUT /activities/{id}`). zod body `{name?: str 1–255,
+sportType?: enum STRAVA_SPORT_TYPES}`, at least one field (else 400).
+  `SyncService.editActivity` calls `StravaClient.updateActivity` then mirrors
+  Strava's canonical response into the local row's name/sportType
+  (`updateActivityFields`; streams/metrics untouched). 200 `ActivitySummary`;
+  404 unknown/not owned; 429 `resumeAt`; **403 when Strava rejects for a
+  missing `activity:write` scope → "reconnect your Strava account"**.
 - `GET /activities/:id/streams` → `ActivityStreams` (shared type:
   `{time, distance, altitude|null, latlng|null}`); 404 with `streamsStatus`
   when absent.
@@ -117,8 +128,10 @@ c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   streams.repo + shared `ActivityStreams`.
 - `StravaClient` methods all take `athleteId` first (token refresh is
   per-athlete via `ensureFreshToken(config, db, athleteId, …)`); the
-  RateLimiter stays shared — Strava limits are per application.
-  `SyncService.refreshActivity(id)` derives the athlete from the stored row.
+  RateLimiter stays shared — Strava limits are per application. All requests
+  funnel through one private `request<T>` (GET by default; pass a JSON `body`
+  to `PUT`, e.g. `updateActivity`). `SyncService.refreshActivity(id)` and
+  `editActivity(id, patch)` derive the athlete from the stored row.
 - `SyncService.run()` iterates `listConnectedAthleteIds` sequentially; one
   athlete's failure records its error state and continues with the next.
   Per athlete: three passes, each wrapped in `retryingOnRateLimit`

@@ -37,7 +37,7 @@ describe('buildAuthorizeUrl', () => {
     const url = new URL(buildAuthorizeUrl(config))
     expect(url.origin + url.pathname).toBe('https://strava.test/oauth/authorize')
     expect(url.searchParams.get('client_id')).toBe('cid')
-    expect(url.searchParams.get('scope')).toBe('activity:read_all')
+    expect(url.searchParams.get('scope')).toBe('activity:read_all,activity:write')
     expect(url.searchParams.get('redirect_uri')).toBe(
       'http://localhost:3001/api/auth/strava/callback',
     )

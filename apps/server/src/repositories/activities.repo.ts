@@ -183,6 +183,19 @@ export function topByElevation(
     .map((r) => r.id)
 }
 
+/**
+ * Update user-editable summary fields (name, sport type) after an edit is
+ * written to Strava. Only the given fields change; streams, elevation and the
+ * derived metric are unaffected by a rename/retype, so they're left intact.
+ */
+export function updateActivityFields(
+  db: Db,
+  id: number,
+  fields: { name?: string; sportType?: string },
+): void {
+  db.update(activities).set(fields).where(eq(activities.id, id)).run()
+}
+
 /** Store the computed sort/badge metric for one activity. */
 export function setAscentMeanVSpeed(db: Db, id: number, value: number | null): void {
   db.update(activities).set({ ascentMeanVSpeed: value }).where(eq(activities.id, id)).run()

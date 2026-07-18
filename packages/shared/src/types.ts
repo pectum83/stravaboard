@@ -20,6 +20,66 @@ export interface ActivitySummary {
 
 export type StreamsStatus = 'pending' | 'done' | 'none'
 
+/**
+ * Strava's SportType enum values, accepted by the UpdateActivity API as
+ * `sport_type`. Single source of truth for the server's edit validation and
+ * the frontend's sport-type picker. Order roughly groups related sports.
+ */
+export const STRAVA_SPORT_TYPES = [
+  'Run',
+  'TrailRun',
+  'VirtualRun',
+  'Walk',
+  'Hike',
+  'Ride',
+  'MountainBikeRide',
+  'GravelRide',
+  'EBikeRide',
+  'EMountainBikeRide',
+  'VirtualRide',
+  'Velomobile',
+  'Handcycle',
+  'AlpineSki',
+  'BackcountrySki',
+  'NordicSki',
+  'RollerSki',
+  'Snowboard',
+  'Snowshoe',
+  'IceSkate',
+  'InlineSkate',
+  'Swim',
+  'Surfing',
+  'Kitesurf',
+  'Windsurf',
+  'StandUpPaddling',
+  'Kayaking',
+  'Canoeing',
+  'Rowing',
+  'VirtualRow',
+  'Sail',
+  'RockClimbing',
+  'Skateboard',
+  'Wheelchair',
+  'Golf',
+  'Soccer',
+  'Tennis',
+  'TableTennis',
+  'Pickleball',
+  'Badminton',
+  'Racquetball',
+  'Squash',
+  'Crossfit',
+  'Elliptical',
+  'HighIntensityIntervalTraining',
+  'Pilates',
+  'StairStepper',
+  'WeightTraining',
+  'Workout',
+  'Yoga',
+] as const
+
+export type SportType = (typeof STRAVA_SPORT_TYPES)[number]
+
 /** Raw per-second streams of an activity, as served by GET /api/activities/:id/streams. */
 export interface ActivityStreams {
   /** Seconds since activity start. */

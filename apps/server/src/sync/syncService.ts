@@ -9,6 +9,7 @@ import {
   listStreamsMissingLatlng,
   setAscentMeanVSpeed,
   setStreamsStatus,
+  updateActivityFields,
   upsertActivitySummary,
   type ActivityRow,
 } from '../repositories/activities.repo.js'
@@ -128,6 +129,27 @@ export class SyncService {
       deleteStreams(this.db, id)
       setStreamsStatus(this.db, id, 'none')
     }
+    return getActivity(this.db, id)!
+  }
+
+  /**
+   * Rename and/or retype one activity, writing the change back to Strava
+   * (UpdateActivity) and mirroring it into the local row. The athlete is
+   * derived from the stored row. Callers verify ownership and handle
+   * NotFoundError / RateLimitError / StravaApiError (missing write scope).
+   */
+  async editActivity(
+    id: number,
+    patch: { name?: string; sportType?: string },
+  ): Promise<ActivityRow> {
+    const existing = getActivity(this.db, id)
+    if (!existing) throw new NotFoundError()
+    const updated = await this.client.updateActivity(existing.athleteId, id, {
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.sportType !== undefined ? { sport_type: patch.sportType } : {}),
+    })
+    // Trust Strava's canonical response for the stored values.
+    updateActivityFields(this.db, id, { name: updated.name, sportType: updated.sport_type })
     return getActivity(this.db, id)!
   }
 

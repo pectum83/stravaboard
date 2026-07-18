@@ -35,6 +35,10 @@ describe('activities API', () => {
     expect((await app.inject({ method: 'GET', url: '/api/activities' })).statusCode).toBe(401)
     expect((await app.inject({ method: 'GET', url: '/api/activities/1/streams' })).statusCode) //
       .toBe(401)
+    expect(
+      (await app.inject({ method: 'PATCH', url: '/api/activities/1', payload: { name: 'x' } }))
+        .statusCode,
+    ).toBe(401)
   })
 
   it('lists newest-first with keyset pagination', async () => {
@@ -325,6 +329,150 @@ describe('activities API', () => {
       })
 
       const res = await app.inject({ method: 'POST', url: '/api/activities/101/refresh', cookies })
+      expect(res.statusCode).toBe(429)
+      expect(res.json().resumeAt).toBeDefined()
+    })
+  })
+
+  describe('PATCH /api/activities/:id', () => {
+    async function editApp(db: Db, stubOpts: StravaStubOptions) {
+      connectAthlete(db, 1)
+      const stub = stravaStub(stubOpts)
+      const { app } = await testApp(
+        {
+          STRAVA_API_BASE: 'https://strava.test/api/v3',
+          STRAVA_OAUTH_BASE: 'https://strava.test/oauth',
+        },
+        db,
+        stub.fetchImpl,
+      )
+      return { app, cookies: session(app, 1), requests: stub.requests }
+    }
+
+    const start = new Date(1000 * 1000).toISOString()
+
+    it('renames an activity, writing through to Strava and locally', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000, { name: 'Old name' }))
+      const { app, cookies, requests } = await editApp(db, {
+        activities: [makeActivity(101, start, { name: 'Old name' })],
+      })
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { name: 'New name' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ id: 101, name: 'New name' })
+      expect(getActivity(db, 101)?.name).toBe('New name')
+      // The write went out as a PUT to the activity.
+      expect(requests).toContain('/api/v3/activities/101')
+    })
+
+    it('changes the sport type', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000, { sportType: 'Run' }))
+      const { app, cookies } = await editApp(db, {
+        activities: [makeActivity(101, start, { sport_type: 'Run' })],
+      })
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { sportType: 'Hike' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().sportType).toBe('Hike')
+      expect(getActivity(db, 101)?.sportType).toBe('Hike')
+    })
+
+    it('rejects an empty body', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000))
+      const { app, cookies } = await editApp(db, { activities: [makeActivity(101, start)] })
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: {},
+      })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('rejects an unknown sport type', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000))
+      const { app, cookies } = await editApp(db, { activities: [makeActivity(101, start)] })
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { sportType: 'Teleportation' },
+      })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('404s for an activity unknown locally', async () => {
+      const { app, cookies } = await editApp(testDb(), { activities: [] })
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/9',
+        cookies,
+        payload: { name: 'x' },
+      })
+      expect(res.statusCode).toBe(404)
+    })
+
+    it("never edits another athlete's activity", async () => {
+      const db = testDb()
+      connectAthlete(db, 2)
+      upsertActivity(db, activity(202, 2000, { athleteId: 2, name: 'Theirs' }))
+      const { app, cookies } = await editApp(db, {
+        activities: [makeActivity(202, start, { name: 'Theirs' })],
+      })
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/202',
+        cookies,
+        payload: { name: 'Hijacked' },
+      })
+      expect(res.statusCode).toBe(404)
+      expect(getActivity(db, 202)?.name).toBe('Theirs')
+    })
+
+    it('maps a missing write scope (Strava 403) to a reconnect message', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000))
+      const { app, cookies } = await editApp(db, {
+        activities: [makeActivity(101, start)],
+        updateStatus: 403,
+      })
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { name: 'New name' },
+      })
+      expect(res.statusCode).toBe(403)
+      expect(res.json().error).toContain('reconnect')
+    })
+
+    it('surfaces Strava rate limiting as 429 with a resume time', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000))
+      const { app, cookies } = await editApp(db, {
+        activities: [makeActivity(101, start)],
+        rateLimit429Count: 1,
+      })
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { name: 'New name' },
+      })
       expect(res.statusCode).toBe(429)
       expect(res.json().resumeAt).toBeDefined()
     })

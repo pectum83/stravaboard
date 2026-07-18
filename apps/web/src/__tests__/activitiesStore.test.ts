@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
     sportTypes: vi.fn(),
     badges: vi.fn(),
     refreshActivity: vi.fn(),
+    updateActivity: vi.fn(),
   },
 }))
 
@@ -58,6 +59,46 @@ describe('activities store', () => {
 
     vi.mocked(api.refreshActivity).mockRejectedValue(new Error('rate limit'))
     await expect(store.refreshActivity(1)).rejects.toThrow('rate limit')
+    expect(store.activities[0]!.name).toBe('Activity 1')
+  })
+
+  it('replaces the edited activity in place and refreshes sport types on retype', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1), summary(2)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.sportTypes).mockClear()
+    vi.mocked(api.updateActivity).mockResolvedValue(
+      summary(2, { name: 'Renamed', sportType: 'Hike' }),
+    )
+    await store.editActivity(2, { name: 'Renamed', sportType: 'Hike' })
+
+    expect(api.updateActivity).toHaveBeenCalledWith(2, { name: 'Renamed', sportType: 'Hike' })
+    expect(store.activities.map((a) => a.name)).toEqual(['Activity 1', 'Renamed'])
+    // A sport-type change can alter the filter set, so it reloads sport types.
+    expect(api.sportTypes).toHaveBeenCalledOnce()
+  })
+
+  it('does not reload sport types for a rename-only edit', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.sportTypes).mockClear()
+    vi.mocked(api.updateActivity).mockResolvedValue(summary(1, { name: 'Renamed' }))
+    await store.editActivity(1, { name: 'Renamed' })
+
+    expect(store.activities[0]!.name).toBe('Renamed')
+    expect(api.sportTypes).not.toHaveBeenCalled()
+  })
+
+  it('propagates edit failures without touching the list', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.updateActivity).mockRejectedValue(new Error('reconnect'))
+    await expect(store.editActivity(1, { name: 'x' })).rejects.toThrow('reconnect')
     expect(store.activities[0]!.name).toBe('Activity 1')
   })
 
