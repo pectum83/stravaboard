@@ -135,9 +135,22 @@ export const DEFAULT_SETTINGS: Settings = {
   ascentDescentToleranceM: 10,
   pauseThresholdS: 30,
   slopeWindowM: 100,
-  // Kept in step with MAX_HUMAN_VSPEED (the fixed metric cap) — see vspeed/stats.
+  // Kept in step with MAX_HUMAN_VSPEED (the default metric cap) — see vspeed/stats.
   liftMaxVSpeed: 1400,
 }
+
+/**
+ * Settings that feed the STORED ranking metrics (mean ascent speed, climbing
+ * gain, descent) — exactly the fields `metricParamsFromSettings` reads. Changing
+ * any of them recomputes the stored metrics server-side and reloads the list;
+ * the window/slope settings only affect the live chart, so they're excluded.
+ */
+export const METRIC_SETTING_KEYS: readonly (keyof Settings)[] = [
+  'ascentMinGainM',
+  'ascentDescentToleranceM',
+  'pauseThresholdS',
+  'liftMaxVSpeed',
+]
 
 export type SyncStateName = 'idle' | 'syncing' | 'waiting_rate_limit' | 'error'
 

@@ -106,6 +106,27 @@ describe('activities store', () => {
     expect(store.activities[0]!.name).toBe('Activity 1')
   })
 
+  it('reloadRankings re-runs the list, badges and totals for the current query', async () => {
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
+    const store = useActivitiesStore()
+    await store.loadFirstPage()
+
+    vi.mocked(api.activities).mockClear()
+    vi.mocked(api.badges).mockClear()
+    vi.mocked(api.stats).mockClear()
+    vi.mocked(api.activities).mockResolvedValue({ activities: [summary(2)] })
+    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [2], elevation: [2] })
+    vi.mocked(api.stats).mockResolvedValue({ count: 1, totalAscentGainM: 480 })
+    await store.reloadRankings()
+
+    expect(api.activities).toHaveBeenCalledOnce()
+    expect(api.badges).toHaveBeenCalledOnce()
+    expect(api.stats).toHaveBeenCalledOnce()
+    expect(store.activities.map((a) => a.id)).toEqual([2])
+    expect(store.badges.ascentSpeed).toEqual([2])
+    expect(store.aggregate).toEqual({ count: 1, totalAscentGainM: 480 })
+  })
+
   it('resets the list and pagination when filters change', async () => {
     vi.mocked(api.activities).mockResolvedValue({
       activities: [summary(1)],

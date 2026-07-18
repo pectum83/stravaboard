@@ -1,5 +1,11 @@
-import { activityMetrics, type ActivityStreams, type SyncStatus } from '@stravaboard/shared'
+import {
+  metricParamsFromSettings,
+  type ActivityStreams,
+  type MetricParams,
+  type SyncStatus,
+} from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
+import { metricsFor } from '../metrics/recompute.js'
 import {
   countPendingStreams,
   countStreamsMissingLatlng,
@@ -13,6 +19,7 @@ import {
   upsertActivitySummary,
   type ActivityRow,
 } from '../repositories/activities.repo.js'
+import { getSettings } from '../repositories/settings.repo.js'
 import { deleteStreams, getStreams, saveStreams } from '../repositories/streams.repo.js'
 import { getSyncState, saveSyncState } from '../repositories/syncState.repo.js'
 import { listConnectedAthleteIds } from '../repositories/tokens.repo.js'
@@ -122,7 +129,7 @@ export class SyncService {
     upsertActivitySummary(this.db, toRow(athleteId, detail))
     try {
       const set = await this.client.getStreams(athleteId, id)
-      this.storeStreams(id, toStoredStreams(set))
+      this.storeStreams(id, toStoredStreams(set), this.paramsFor(athleteId))
       setStreamsStatus(this.db, id, 'done')
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err
@@ -162,6 +169,11 @@ export class SyncService {
     return st
   }
 
+  /** Metric parameters from an athlete's current settings. */
+  private paramsFor(athleteId: number): MetricParams {
+    return metricParamsFromSettings(getSettings(this.db, athleteId))
+  }
+
   private async run(): Promise<void> {
     for (const athleteId of listConnectedAthleteIds(this.db)) {
       await this.runFor(athleteId)
@@ -176,10 +188,11 @@ export class SyncService {
     saveSyncState(this.db, athleteId, { status: 'syncing', error: null })
 
     try {
-      this.computeMissingMetrics(athleteId) // local only, no API budget
+      const params = this.paramsFor(athleteId)
+      this.computeMissingMetrics(athleteId, params) // local only, no API budget
       await this.retryingOnRateLimit(athleteId, () => this.fetchNewSummaries(athleteId))
-      await this.retryingOnRateLimit(athleteId, () => this.fetchPendingStreams(athleteId))
-      await this.retryingOnRateLimit(athleteId, () => this.backfillLatlng(athleteId))
+      await this.retryingOnRateLimit(athleteId, () => this.fetchPendingStreams(athleteId, params))
+      await this.retryingOnRateLimit(athleteId, () => this.backfillLatlng(athleteId, params))
       st.state = 'idle'
       saveSyncState(this.db, athleteId, { status: 'idle' })
       this.log(`sync done for athlete ${athleteId}: ${st.fetched} activities fetched`)
@@ -260,48 +273,30 @@ export class SyncService {
     }
   }
 
-  private async fetchPendingStreams(athleteId: number): Promise<void> {
+  private async fetchPendingStreams(athleteId: number, params: MetricParams): Promise<void> {
     for (;;) {
       const pending = listPendingStreams(this.db, athleteId, 50)
       if (pending.length === 0) return
       for (const activity of pending) {
-        await this.fetchStreamsFor(activity)
+        await this.fetchStreamsFor(activity, params)
       }
     }
   }
 
   /** Persist streams and refresh the derived sort/badge metrics together. */
-  private storeStreams(activityId: number, streams: ActivityStreams): void {
+  private storeStreams(activityId: number, streams: ActivityStreams, params: MetricParams): void {
     saveStreams(this.db, activityId, streams, new Date(this.nowMs()).toISOString())
-    const { meanVSpeed, gainM, descentLossM } = this.metricsFor(streams)
+    const { meanVSpeed, gainM, descentLossM } = metricsFor(streams, params, this.log)
     setActivityMetrics(this.db, activityId, meanVSpeed, gainM, descentLossM)
   }
 
   /**
-   * The stored sort/badge metrics (mean ascent speed + lift-excluded gain +
-   * total descent), defensively. `0` means "computed, nothing rankable" — NULL
-   * stays reserved for "not computed yet". A single malformed stream set must
-   * never abort a sync, so any unexpected failure is logged and treated as
-   * unrankable.
+   * Local backfill: compute the stored metrics for the athlete's done
+   * activities whose metric is still NULL (streams predating the column, or a
+   * migration NULL-reset). Uses the athlete's current settings, so a
+   * settings-change reset refills with settings-based values. Pure CPU, no API.
    */
-  private metricsFor(streams: ActivityStreams): {
-    meanVSpeed: number
-    gainM: number
-    descentLossM: number
-  } {
-    try {
-      return activityMetrics(streams) ?? { meanVSpeed: 0, gainM: 0, descentLossM: 0 }
-    } catch (err) {
-      this.log(`activity metric skipped: ${err instanceof Error ? err.message : String(err)}`)
-      return { meanVSpeed: 0, gainM: 0, descentLossM: 0 }
-    }
-  }
-
-  /**
-   * One-time local pass: compute the stored metric for activities whose
-   * streams predate the ascent_mean_vspeed column. Pure CPU, no API calls.
-   */
-  private computeMissingMetrics(athleteId: number): void {
+  private computeMissingMetrics(athleteId: number, params: MetricParams): void {
     for (;;) {
       const ids = listMissingMetrics(this.db, athleteId, 200)
       if (ids.length === 0) return
@@ -309,17 +304,17 @@ export class SyncService {
       for (const id of ids) {
         const streams = getStreams(this.db, id)
         const { meanVSpeed, gainM, descentLossM } = streams
-          ? this.metricsFor(streams)
+          ? metricsFor(streams, params, this.log)
           : { meanVSpeed: 0, gainM: 0, descentLossM: 0 }
         setActivityMetrics(this.db, id, meanVSpeed, gainM, descentLossM)
       }
     }
   }
 
-  private async fetchStreamsFor(activity: ActivityRow): Promise<void> {
+  private async fetchStreamsFor(activity: ActivityRow, params: MetricParams): Promise<void> {
     try {
       const set = await this.client.getStreams(activity.athleteId, activity.id)
-      this.storeStreams(activity.id, toStoredStreams(set))
+      this.storeStreams(activity.id, toStoredStreams(set), params)
       setStreamsStatus(this.db, activity.id, 'done')
     } catch (err) {
       // Manual/indoor activities have no streams; that is a terminal state, not an error.
@@ -334,7 +329,7 @@ export class SyncService {
     }
   }
 
-  private async backfillLatlng(athleteId: number): Promise<void> {
+  private async backfillLatlng(athleteId: number, params: MetricParams): Promise<void> {
     for (;;) {
       const rows = listStreamsMissingLatlng(this.db, athleteId, 50)
       if (rows.length === 0) return
@@ -342,7 +337,7 @@ export class SyncService {
         `backfilling GPS tracks: ${countStreamsMissingLatlng(this.db, athleteId)} activities left`,
       )
       for (const activity of rows) {
-        await this.refetchStreamsFor(activity)
+        await this.refetchStreamsFor(activity, params)
       }
     }
   }
@@ -352,15 +347,15 @@ export class SyncService {
    * GPS track. Always leaves a non-NULL latlng behind (the backfill's
    * termination guarantee), even when Strava no longer serves the streams.
    */
-  private async refetchStreamsFor(activity: ActivityRow): Promise<void> {
+  private async refetchStreamsFor(activity: ActivityRow, params: MetricParams): Promise<void> {
     try {
       const set = await this.client.getStreams(activity.athleteId, activity.id)
-      this.storeStreams(activity.id, toStoredStreams(set))
+      this.storeStreams(activity.id, toStoredStreams(set), params)
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err
       const existing = getStreams(this.db, activity.id)
       if (existing) {
-        this.storeStreams(activity.id, { ...existing, latlng: [] })
+        this.storeStreams(activity.id, { ...existing, latlng: [] }, params)
       }
     }
   }

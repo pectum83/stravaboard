@@ -22,9 +22,9 @@ Bad GPS is filtered out: altitude **spikes are despiked** before any analysis
 **fast climbs above a cap** — mechanical ski lifts (even slow resort ones,
 ~1450 m/h), or artefacts faster than any human ascent — are shown greyed on the
 chart and left out of the ascent mean, badges and sort (descents aren't capped,
-since skiing/running downhill is genuinely fast). The chart cap is the
-**Lift/artefact cap** setting (default 1400 m/h); the ranking uses the same
-value as a fixed constant.
+since skiing/running downhill is genuinely fast). The cap is the
+**Lift/artefact cap** setting (default 1400 m/h); the chart and the ranking use
+the same value.
 
 Ascent/descent means exclude **pauses**: periods where the GPS position stays
 within ~5 m for more than 30 s (threshold configurable) — detected from
@@ -115,9 +115,12 @@ next sync. It respects the same rate limits and resumes across restarts; the
 map shows "No GPS trace" for an activity until its backfill has run. Settings
 already saved in v1 keep their values (the new defaults — instant 60 s, short
 120 s — only apply to fresh databases); adjust them in the Settings panel.
-The mean-ascent-speed ranking used for sorting and badges is computed with
-fixed standard parameters, so it stays stable regardless of your chart
-settings; it is backfilled locally (no extra Strava calls) on the next sync.
+The mean-ascent-speed ranking (and the climbing-gain and descent figures) used
+for sorting, badges and the list is computed from your own analysis settings, so
+it always matches the chart: changing the pause threshold, minimum gain,
+tolerance or lift cap re-ranks your activities and updates the list figures right
+away (recomputed locally, no extra Strava calls). Window and slope settings only
+affect the chart.
 
 ## Quality gates
 

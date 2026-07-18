@@ -1,7 +1,7 @@
 import { detectAscents, detectDescents, type Ascent } from './ascents.js'
 import { detectPauses } from './pauses.js'
 import { despike } from './smoothing.js'
-import type { ActivityStreams } from '../types.js'
+import type { ActivityStreams, Settings } from '../types.js'
 
 /** Whole-activity aggregate over ascent (or descent) segments. */
 export interface SegmentAggregate {
@@ -14,10 +14,11 @@ export interface SegmentAggregate {
 }
 
 /**
- * Standard segment parameters used for the STORED per-activity ascent mean
- * (sorting and best-of badges). Deliberately independent from each user's
- * chart settings: a ranking is only meaningful when every activity is
- * measured the same way.
+ * Default segment parameters for the stored per-activity metrics — kept in step
+ * with the segment fields of `DEFAULT_SETTINGS`. Used when no settings are given
+ * (see `STANDARD_METRIC_PARAMS`); each athlete's own settings override these via
+ * `metricParamsFromSettings`, so a ranking reflects the same measurement the
+ * athlete sees on their chart.
  */
 export const STANDARD_SEGMENT_PARAMS = {
   minGainM: 30,
@@ -26,13 +27,13 @@ export const STANDARD_SEGMENT_PARAMS = {
 } as const
 
 /**
- * Ascent/descent segments faster than this (m/h, absolute) are treated as
- * non-human — a mechanical lift, or a GPS artefact that survived despiking —
- * and excluded from the ascent/descent means, the ranking metric and the
- * badges. Slow resort lifts run as low as ~1450 m/h, so the cap sits just below
- * to catch them. Fixed (like `STANDARD_SEGMENT_PARAMS`) so rankings stay
- * comparable across activities; the chart's cap is the tunable `liftMaxVSpeed`
- * setting, which defaults to this value.
+ * Default ascent lift/artefact cap (m/h): an ascent faster than this is treated
+ * as non-human — a mechanical lift, or a GPS artefact that survived despiking —
+ * and dropped from the ascent mean, the ranking metric and the badges. Slow
+ * resort lifts run as low as ~1450 m/h, so the cap sits just below to catch
+ * them. Equals the `liftMaxVSpeed` setting's default; the stored metric now uses
+ * each athlete's own `liftMaxVSpeed` via `metricParamsFromSettings`. Descents are
+ * never capped — see `partitionSegments` / `descentLossM`.
  */
 export const MAX_HUMAN_VSPEED = 1400
 
@@ -54,7 +55,43 @@ export function partitionSegments(
   return { kept, excluded }
 }
 
-/** The stored per-activity sort/badge metrics, standard segment parameters. */
+/**
+ * Segmentation parameters for the stored per-activity metrics. Defaults to
+ * `STANDARD_METRIC_PARAMS`; the server passes each athlete's own settings via
+ * `metricParamsFromSettings` so the stored ranking matches their chart.
+ */
+export interface MetricParams {
+  /** Minimum gain for an ascent/descent segment to count, meters. */
+  minGainM: number
+  /** Maximum counter-move inside a segment before it ends, meters. */
+  descentToleranceM: number
+  /** Minimum stationary duration excluded from segment means, seconds. */
+  pauseThresholdS: number
+  /** Ascent lift/artefact cap (m/h); descents are never capped. */
+  maxAscentVSpeed: number
+}
+
+/** Default metric parameters — the segment fields of `DEFAULT_SETTINGS`. */
+export const STANDARD_METRIC_PARAMS: MetricParams = {
+  ...STANDARD_SEGMENT_PARAMS,
+  maxAscentVSpeed: MAX_HUMAN_VSPEED,
+}
+
+/**
+ * Derive metric parameters from an athlete's settings so the stored ranking
+ * metric is computed exactly like the chart's ascent/descent stats
+ * (`computeVSpeedModel`). `liftMaxVSpeed` caps ascents only.
+ */
+export function metricParamsFromSettings(settings: Settings): MetricParams {
+  return {
+    minGainM: settings.ascentMinGainM,
+    descentToleranceM: settings.ascentDescentToleranceM,
+    pauseThresholdS: settings.pauseThresholdS,
+    maxAscentVSpeed: settings.liftMaxVSpeed,
+  }
+}
+
+/** The stored per-activity sort/badge metrics. */
 export interface ActivityMetrics {
   /** Mean ascent speed (m/h), 0 when no ascent qualifies. */
   meanVSpeed: number
@@ -69,14 +106,18 @@ export interface ActivityMetrics {
 }
 
 /**
- * The stored per-activity metrics with the standard parameters. Despikes GPS
- * altitude spikes, then: for the ascent metrics detects ascents and drops
- * lift/artefact-fast segments before aggregating; for the descent total sums
- * every detected descent (no lift cap — see `descentLossM`). Returns `null`
- * when the activity has no altitude data or the streams don't line up
- * (unrankable); all metrics are `0` when altitude exists but nothing qualifies.
+ * The stored per-activity metrics with the given segment `params` (default
+ * `STANDARD_METRIC_PARAMS`). Despikes GPS altitude spikes, then: for the ascent
+ * metrics detects ascents and drops lift/artefact-fast segments (above
+ * `params.maxAscentVSpeed`) before aggregating; for the descent total sums every
+ * detected descent (no lift cap — see `descentLossM`). Returns `null` when the
+ * activity has no altitude data or the streams don't line up (unrankable); all
+ * metrics are `0` when altitude exists but nothing qualifies.
  */
-export function activityMetrics(streams: ActivityStreams): ActivityMetrics | null {
+export function activityMetrics(
+  streams: ActivityStreams,
+  params: MetricParams = STANDARD_METRIC_PARAMS,
+): ActivityMetrics | null {
   const rawAltitude = streams.altitude
   if (rawAltitude === null || rawAltitude.length === 0) return null
   // Segmentation needs time/distance/altitude to line up. Some activities carry
@@ -90,15 +131,15 @@ export function activityMetrics(streams: ActivityStreams): ActivityMetrics | nul
   }
   const altitude = despike(rawAltitude)
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, altitude, {
-    thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
+    thresholdS: params.pauseThresholdS,
   })
   const segmentOptions = {
-    minGainM: STANDARD_SEGMENT_PARAMS.minGainM,
-    descentToleranceM: STANDARD_SEGMENT_PARAMS.descentToleranceM,
+    minGainM: params.minGainM,
+    descentToleranceM: params.descentToleranceM,
     pauses,
   }
   const ascents = detectAscents(streams.time, streams.distance, altitude, segmentOptions)
-  const ascentAgg = aggregateSegments(partitionSegments(ascents).kept)
+  const ascentAgg = aggregateSegments(partitionSegments(ascents, params.maxAscentVSpeed).kept)
   // Descents keep every segment: a legitimately fast ski descent must count
   // toward D−, unlike ascents where a fast segment is a mechanical lift.
   const descents = detectDescents(streams.time, streams.distance, altitude, segmentOptions)
@@ -112,8 +153,11 @@ export function activityMetrics(streams: ActivityStreams): ActivityMetrics | nul
  * Whole-activity mean ascent speed (m/h) — the ranking metric behind the "Best
  * ascent speed" sort and badges. Thin wrapper over `activityMetrics`.
  */
-export function activityAscentMean(streams: ActivityStreams): number | null {
-  return activityMetrics(streams)?.meanVSpeed ?? null
+export function activityAscentMean(
+  streams: ActivityStreams,
+  params: MetricParams = STANDARD_METRIC_PARAMS,
+): number | null {
+  return activityMetrics(streams, params)?.meanVSpeed ?? null
 }
 
 /** Aggregate segments into a whole-activity mean: Σ gain / Σ effective time. */

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { METRIC_SETTING_KEYS, metricParamsFromSettings } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
+import { recomputeAllMetrics } from '../metrics/recompute.js'
 import { getSettings, saveSettings } from '../repositories/settings.repo.js'
 
 const settingsSchema = z.object({
@@ -22,7 +24,15 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid settings', details: parsed.error.issues })
     }
+    const previous = getSettings(db, req.athleteId)
     saveSettings(db, req.athleteId, parsed.data)
+    // A change to any metric-affecting setting re-ranks this athlete's
+    // activities: recompute their stored metrics (local, no Strava calls) so the
+    // sort, badges and list figures agree with the chart. Window/slope-only
+    // changes touch just the live chart, so they skip this.
+    if (METRIC_SETTING_KEYS.some((k) => previous[k] !== parsed.data[k])) {
+      recomputeAllMetrics(db, req.athleteId, metricParamsFromSettings(parsed.data))
+    }
     return parsed.data
   })
 }
