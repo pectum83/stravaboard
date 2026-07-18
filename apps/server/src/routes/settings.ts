@@ -10,6 +10,7 @@ const settingsSchema = z.object({
   ascentMinGainM: z.number().min(1).max(1000),
   ascentDescentToleranceM: z.number().min(0).max(500),
   pauseThresholdS: z.number().int().min(5).max(600),
+  pauseRadiusM: z.number().int().min(2).max(15),
   slopeWindowM: z.number().int().min(10).max(2000),
   liftMaxVSpeed: z.number().int().min(500).max(6000),
 })

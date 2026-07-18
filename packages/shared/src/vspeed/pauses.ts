@@ -1,45 +1,48 @@
 export interface Pause {
-  /** Index of the first stationary sample. */
+  /** Index of the first sample of the break. */
   startIndex: number
-  /** Index of the last stationary sample. */
+  /** Index of the last sample of the break. */
   endIndex: number
-  /** Elapsed time between the first and last stationary sample, seconds. */
+  /** Elapsed time between the first and last sample, seconds. */
   durationS: number
 }
 
 export interface PauseOptions {
-  /** Minimum stationary duration for a pause to count, seconds. */
+  /** Minimum total duration for a break to count, seconds. */
   thresholdS: number
   /** Radius the position must stay within to be considered stationary, meters. */
   radiusM?: number
 }
 
 /**
- * Default stationary radius. GPS jitter while standing still is typically a
- * couple of meters; 5 m absorbs it without hiding slow walking (1 m/s leaves
- * the radius within seconds).
+ * Default stationary radius (the `pauseRadiusM` setting overrides it). GPS
+ * jitter while standing still is typically a couple of meters; 5 m absorbs it
+ * without hiding slow walking (1 m/s leaves the radius within seconds).
  */
 export const PAUSE_RADIUS_M = 5
 
-/**
- * A GPS track that moves less than this over a whole candidate pause is treated
- * as FROZEN (not updating). Combined with a path that advanced past
- * `DEAD_GPS_ADVANCE_M`, it means the receiver lost lock while the athlete kept
- * moving — start-of-activity, a tunnel, or a wheel/foot-pod feeding distance
- * with no GPS — so the "standstill" is spurious. Measured on production data:
- * genuine rests keep a few metres of latlng jitter (well above 2 m), whereas
- * dead-GPS runs sit at exactly 0 while the distance advances hundreds of metres.
- */
-const FROZEN_LATLNG_M = 2
-const DEAD_GPS_ADVANCE_M = 30
+// ---------------------------------------------------------------------------
+// Tuning constants (validated on production hike/ride data — see the pause
+// section of docs/summary/algorithms.md for the reasoning).
+//
+// Distances scale with the stationary radius so the whole detector follows the
+// one user-visible knob; the two absolute values are physical properties of
+// the GPS/barometer, not of the radius.
+// ---------------------------------------------------------------------------
 
-/**
- * A real standstill barely changes altitude. A candidate pause whose NET
- * altitude change exceeds this is slow (often steep) movement misread as a
- * stop — the horizontal displacement stayed small but the athlete kept climbing
- * or descending. Comfortably above barometric drift/noise over a rest.
- */
-const PAUSE_MAX_ALTITUDE_CHANGE_M = 10
+/** Fragments no shorter than this feed the merge stage (capped by thresholdS). */
+const FRAGMENT_MIN_S = 15
+/** Fragments separated by at most this bridge merge into one break. */
+const MERGE_GAP_S = 60
+/** …and only when the next fragment starts within this × radius of the break's anchor. */
+const MERGE_DIST_FACTOR = 5
+/** Track spread below this over a whole break = the GPS was frozen (not updating). */
+const FROZEN_LATLNG_M = 2
+/** A frozen track + a path advance above this × radius = dead GPS, not a standstill. */
+const DEAD_GPS_ADVANCE_FACTOR = 6
+/** Net altitude change tolerated for a real break: max(floor, rate · duration). */
+const PAUSE_ALT_FLOOR_M = 5
+const PAUSE_ALT_RATE_M_PER_S = 0.05
 
 const EARTH_RADIUS_M = 6_371_000
 
@@ -54,28 +57,37 @@ export function haversineM(a: readonly [number, number], b: readonly [number, nu
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h))
 }
 
+/** A candidate stationary stretch, by sample indices (inclusive). */
+interface Run {
+  start: number
+  end: number
+}
+
 /**
- * Detect pauses: periods where the position stays within `radiusM` of an
- * anchor point for at least `thresholdS` seconds.
+ * Detect breaks: periods where the athlete stays around one spot for at least
+ * `thresholdS` seconds. Four explicit stages:
  *
- * Horizontal displacement comes from the GPS track (`latlng`, Strava order
- * [lat, lng]) when available, so integrated jitter in the distance stream
- * cannot hide a standstill. When `latlng` is absent (or its length does not
- * match), the cumulative distance stream is the fallback.
+ * 1. **scan** — anchor scan over the horizontal displacement (GPS track when
+ *    present, else the cumulative distance stream) emitting stationary
+ *    fragments of at least `FRAGMENT_MIN_S`.
+ * 2. **merge** — fragments separated by a short bridge (≤ `MERGE_GAP_S`) that
+ *    stays near the break's anchor (≤ `MERGE_DIST_FACTOR`·radius) fold into ONE
+ *    break: sitting down, stepping away for a photo and sitting back down is a
+ *    single pause whose duration includes the bridge. The spatial bound is what
+ *    keeps stop-and-go traffic (stops hundreds of meters apart) from chaining.
+ * 3. **validate** — drop breaks that are artefacts rather than rests:
+ *    - *dead GPS*: the track never moved (spread < `FROZEN_LATLNG_M`) while the
+ *      path advanced far (> `DEAD_GPS_ADVANCE_FACTOR`·radius) — the receiver
+ *      lost lock while the athlete kept moving. A real rest keeps a few meters
+ *      of jitter spread, so it never looks frozen.
+ *    - *vertical movement*: a real rest barely changes altitude, so a net
+ *      change above `max(PAUSE_ALT_FLOOR_M, PAUSE_ALT_RATE_M_PER_S·duration)`
+ *      is slow (often steep) climbing misread as a stop. Uses the (despiked)
+ *      `altitude` stream; skipped when absent or mismatched.
+ * 4. **threshold** — keep breaks lasting at least `thresholdS`.
  *
- * Each candidate is then **validated** against the two signals the horizontal
- * scan can be fooled by (both tuned on production hike/ride data):
- * - **Dead GPS** — the track froze (didn't update) while the path clearly
- *   advanced. The athlete was moving; the receiver just wasn't reporting it.
- * - **Vertical movement** — a genuine rest does not gain or lose altitude, so a
- *   large net altitude change means slow/steep movement, not a stop. Needs the
- *   (ideally despiked) `altitude` stream; skipped when it is absent/mismatched.
- *
- * Recording gaps count via the `time` values: a gap while the position is
- * unchanged is a pause, a gap with movement is not.
- *
- * Anchor scan: worst case O(n·k) where k is the samples needed to leave the
- * radius — a handful at typical 1 Hz sampling, so near-linear in practice.
+ * Recording gaps count through the `time` values: a gap while the position is
+ * unchanged extends the break, a gap with a position jump does not.
  */
 export function detectPauses(
   time: readonly number[],
@@ -94,41 +106,108 @@ export function detectPauses(
     ? (i: number, j: number) => haversineM(track[i]!, track[j]!)
     : (i: number, j: number) => Math.abs(distance[j]! - distance[i]!)
 
-  const pauses: Pause[] = []
+  const fragments = scanStationaryRuns(time, disp, n, radiusM, Math.min(FRAGMENT_MIN_S, thresholdS))
+  const breaks = mergeRuns(fragments, time, disp, MERGE_GAP_S, MERGE_DIST_FACTOR * radiusM)
+  return breaks
+    .filter((b) => time[b.end]! - time[b.start]! >= thresholdS)
+    .filter((b) => isRealStandstill(track, distance, alt, time, b, radiusM))
+    .map((b) => ({
+      startIndex: b.start,
+      endIndex: b.end,
+      durationS: time[b.end]! - time[b.start]!,
+    }))
+}
+
+/**
+ * Anchor scan: from each anchor `i`, advance `j` while the displacement stays
+ * within the radius; a dwell of at least `minDwellS` emits a fragment and
+ * re-anchors past it, otherwise the anchor slides one sample. Worst case
+ * O(n·k) where k is the samples needed to leave the radius — a handful at
+ * typical 1 Hz sampling, so near-linear in practice.
+ */
+function scanStationaryRuns(
+  time: readonly number[],
+  disp: (i: number, j: number) => number,
+  n: number,
+  radiusM: number,
+  minDwellS: number,
+): Run[] {
+  const runs: Run[] = []
   let i = 0
   while (i < n - 1) {
     let j = i + 1
     while (j < n && disp(i, j) <= radiusM) j++
     const last = j - 1
-    const durationS = time[last]! - time[i]!
-    if (last > i && durationS >= thresholdS) {
-      // A candidate long enough to count — keep it only if it survives the
-      // dead-GPS and vertical-movement checks. Either way re-anchor past it.
-      if (isRealStandstill(track, distance, alt, i, last)) {
-        pauses.push({ startIndex: i, endIndex: last, durationS })
-      }
+    if (last > i && time[last]! - time[i]! >= minDwellS) {
+      runs.push({ start: i, end: last })
       i = j
     } else {
       i++
     }
   }
-  return pauses
+  return runs
 }
 
-/** Reject candidate pauses that are dead-GPS artefacts or slow vertical movement. */
+/**
+ * Fold fragments that belong to one break: the next fragment must start within
+ * `maxGapS` of the current break's end AND within `maxDistM` of the break's
+ * anchor (its first sample). The merged duration spans the bridge — a short
+ * wander in the middle of a rest is part of the rest.
+ */
+function mergeRuns(
+  runs: readonly Run[],
+  time: readonly number[],
+  disp: (i: number, j: number) => number,
+  maxGapS: number,
+  maxDistM: number,
+): Run[] {
+  const merged: Run[] = []
+  for (const run of runs) {
+    const current = merged[merged.length - 1]
+    if (
+      current &&
+      time[run.start]! - time[current.end]! <= maxGapS &&
+      disp(current.start, run.start) <= maxDistM
+    ) {
+      current.end = run.end
+    } else {
+      merged.push({ ...run })
+    }
+  }
+  return merged
+}
+
+/** Reject breaks that are dead-GPS artefacts or slow vertical movement. */
 function isRealStandstill(
   track: readonly (readonly [number, number])[] | null,
   distance: readonly number[],
   alt: readonly number[] | null,
-  start: number,
-  end: number,
+  time: readonly number[],
+  b: Run,
+  radiusM: number,
 ): boolean {
-  if (track) {
-    const straight = haversineM(track[start]!, track[end]!)
-    const advance = Math.abs(distance[end]! - distance[start]!)
-    if (straight < FROZEN_LATLNG_M && advance > DEAD_GPS_ADVANCE_M) return false
+  if (track && isFrozenTrack(track, b)) {
+    const advance = Math.abs(distance[b.end]! - distance[b.start]!)
+    if (advance > DEAD_GPS_ADVANCE_FACTOR * radiusM) return false
   }
-  if (alt && Math.abs(alt[end]! - alt[start]!) > PAUSE_MAX_ALTITUDE_CHANGE_M) return false
+  if (alt) {
+    const durationS = time[b.end]! - time[b.start]!
+    const allowed = Math.max(PAUSE_ALT_FLOOR_M, PAUSE_ALT_RATE_M_PER_S * durationS)
+    if (Math.abs(alt[b.end]! - alt[b.start]!) > allowed) return false
+  }
+  return true
+}
+
+/**
+ * A frozen (non-updating) track repeats one coordinate for the whole break, so
+ * its spread from the anchor stays essentially zero; a genuine rest always
+ * carries a few meters of GPS jitter. Checking the spread (not just start→end)
+ * keeps a real rest that happens to end back at its starting spot.
+ */
+function isFrozenTrack(track: readonly (readonly [number, number])[], b: Run): boolean {
+  for (let k = b.start + 1; k <= b.end; k++) {
+    if (haversineM(track[b.start]!, track[k]!) >= FROZEN_LATLNG_M) return false
+  }
   return true
 }
 

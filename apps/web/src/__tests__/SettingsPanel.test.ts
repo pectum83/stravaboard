@@ -26,16 +26,17 @@ describe('SettingsPanel', () => {
     vi.useRealTimers()
   })
 
-  it('renders the eight setting fields with current values', () => {
+  it('renders the nine setting fields with current values', () => {
     const wrapper = mount(SettingsPanel)
     const inputs = wrapper.findAll('input')
-    expect(inputs).toHaveLength(8)
+    expect(inputs).toHaveLength(9)
     expect((inputs[0]!.element as HTMLInputElement).value).toBe('60')
     expect((inputs[1]!.element as HTMLInputElement).value).toBe('120')
     expect((inputs[2]!.element as HTMLInputElement).value).toBe('300')
     expect((inputs[5]!.element as HTMLInputElement).value).toBe('30')
-    expect((inputs[6]!.element as HTMLInputElement).value).toBe('100')
-    expect((inputs[7]!.element as HTMLInputElement).value).toBe('1400')
+    expect((inputs[6]!.element as HTMLInputElement).value).toBe('5') // pause radius
+    expect((inputs[7]!.element as HTMLInputElement).value).toBe('100')
+    expect((inputs[8]!.element as HTMLInputElement).value).toBe('1400')
   })
 
   it('commits on change (blur) and saves debounced', async () => {

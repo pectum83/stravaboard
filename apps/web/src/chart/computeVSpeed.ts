@@ -94,6 +94,7 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
       ? []
       : detectPauses(time, streams.latlng, distance, altitude, {
           thresholdS: settings.pauseThresholdS,
+          radiusM: settings.pauseRadiusM,
         })
   const segmentOptions = {
     minGainM: settings.ascentMinGainM,

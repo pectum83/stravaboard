@@ -23,6 +23,7 @@ export const STANDARD_SEGMENT_PARAMS = {
   minGainM: 30,
   descentToleranceM: 10,
   pauseThresholdS: 30,
+  pauseRadiusM: 5,
 } as const
 
 /**
@@ -91,6 +92,7 @@ export function activityMetrics(streams: ActivityStreams): ActivityMetrics | nul
   const altitude = despike(rawAltitude)
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, altitude, {
     thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
+    radiusM: STANDARD_SEGMENT_PARAMS.pauseRadiusM,
   })
   const segmentOptions = {
     minGainM: STANDARD_SEGMENT_PARAMS.minGainM,

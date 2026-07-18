@@ -32,6 +32,7 @@ const fields: Field[] = [
     max: 500,
   },
   { key: 'pauseThresholdS', label: 'Pause threshold', unit: 's', min: 5, max: 600 },
+  { key: 'pauseRadiusM', label: 'Pause radius', unit: 'm', min: 2, max: 15 },
   { key: 'slopeWindowM', label: 'Slope window', unit: 'm', min: 10, max: 2000 },
   { key: 'liftMaxVSpeed', label: 'Lift/artefact cap', unit: 'm/h', min: 500, max: 6000 },
 ]

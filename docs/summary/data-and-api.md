@@ -119,8 +119,9 @@ athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
 - `GET /config` → `{maptilerKey: string|null}` (config.ts; null when unset).
 - `GET/PUT /settings` — zod: instantWindowS 1–600, shortWindowS 1–3600,
   longWindowS 1–7200, ascentMinGainM 1–1000, ascentDescentToleranceM 0–500,
-  pauseThresholdS int 5–600, slopeWindowM int 10–2000, liftMaxVSpeed int
-  500–6000 (chart lift/artefact cap, default 1400). PUT requires the full object.
+  pauseThresholdS int 5–600, pauseRadiusM int 2–15 (stationary radius, default
+  5), slopeWindowM int 10–2000, liftMaxVSpeed int 500–6000 (chart lift/artefact
+  cap, default 1400). PUT requires the full object.
 - `POST /sync` (202 fire-and-forget); `GET /sync/status` → `SyncStatus`
   (state, fetchedActivities, pendingStreams, pendingLatlngBackfill,
   rateLimitResumeAt?, error?).

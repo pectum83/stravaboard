@@ -55,4 +55,21 @@ describe('settings API', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+
+  it('bounds the pause radius to 2–15 m', async () => {
+    const db = testDb()
+    connectAthlete(db, 1)
+    const { app } = await testApp({}, db)
+    const cookies = session(app, 1)
+    const put = (pauseRadiusM: number) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/settings',
+        payload: { ...DEFAULT_SETTINGS, pauseRadiusM },
+        cookies,
+      })
+    expect((await put(3)).statusCode).toBe(200)
+    expect((await put(1)).statusCode).toBe(400)
+    expect((await put(16)).statusCode).toBe(400)
+  })
 })

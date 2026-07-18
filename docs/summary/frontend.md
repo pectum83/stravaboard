@@ -165,7 +165,7 @@ ascent, descent}` (`ascent`/`descent` are `SegmentAggregate`). Renders the
   `—` (null) for each mean. `DashboardPage` renders it only when both `model` and
   `selectedActivity` exist (distance/elapsed/moving come from the summary,
   `pausedS` from the model).
-- `SettingsPanel.vue` — collapsible `<details>` of 8 number inputs (fields
+- `SettingsPanel.vue` — collapsible `<details>` of 9 number inputs (fields
   array). Each input is a **local draft** (`drafts` reactive, synced from the
   store via a deep watch); `commit(field)` on `@change` (blur) **and**
   `@keydown.enter` clamps to min/max, writes through the settings store, and

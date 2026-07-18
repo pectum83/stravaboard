@@ -7,9 +7,10 @@ All throw on stream length mismatch. Re-exported via `packages/shared/src/index.
 ## Types & defaults — `packages/shared/src/types.ts`
 
 ```ts
-Settings { instantWindowS, shortWindowS, longWindowS,
-           ascentMinGainM, ascentDescentToleranceM, pauseThresholdS, slopeWindowM }
-DEFAULT_SETTINGS = { 60, 120, 300, 30, 10, 30, 100 }   // same order
+Settings { instantWindowS, shortWindowS, longWindowS, ascentMinGainM,
+           ascentDescentToleranceM, pauseThresholdS, pauseRadiusM,
+           slopeWindowM, liftMaxVSpeed }
+DEFAULT_SETTINGS = { 60, 120, 300, 30, 10, 30, 5, 100, 1400 }   // same order
 ActivityStreams { time, distance, altitude|null, latlng|null }
 ```
 
@@ -48,30 +49,40 @@ median-filters on top.
 
 ```ts
 detectPauses(time, latlng|null, distance, altitude|null, {thresholdS, radiusM=5}) → Pause[]
-Pause { startIndex, endIndex, durationS }        // PAUSE_RADIUS_M = 5 (constant, not a setting)
+Pause { startIndex, endIndex, durationS }   // radiusM = the pauseRadiusM setting
 pausedTimeInRange(pauses, time, startIndex, endIndex) → seconds (clips overlaps)
 haversineM([lat,lng], [lat,lng]) → meters
 ```
 
-Anchor scan: advance `j` while displacement(anchor, j) ≤ radius; if the dwell
-`time[j−1]−time[i] ≥ thresholdS` the candidate is **validated** (below) and, kept
-or not, the scan re-anchors at `j`; else `i++`. Displacement = haversine on
-latlng when present & length-matching, else `|distance[j]−distance[i]|` (fallback).
-Recording gaps count as paused time when the position is unchanged across the
-gap; a gap with a large position jump is travel, not a pause. Worst case O(n·k),
-near-linear at 1 Hz.
+A **four-stage pipeline** (each stage a small named function; every constant
+tuned on production hike/ride data). Displacement = haversine on latlng when
+present & length-matching, else `|distance[j]−distance[i]|` (fallback).
+Distance-like constants scale with the radius so the one user knob drives the
+whole detector.
 
-**Candidate validation** (`isRealStandstill`, tuned on production hike/ride data —
-both signals the horizontal scan is fooled by; pass despiked `altitude`, null
-skips the vertical check):
-
-- **Dead GPS** — the track is frozen (`straight < FROZEN_LATLNG_M = 2 m` start→end)
-  while the path advanced (`> DEAD_GPS_ADVANCE_M = 30 m`): the receiver lost lock
-  (start-of-activity, tunnel, wheel/foot-pod distance) while the athlete moved →
-  reject.
-- **Vertical movement** — net altitude change `> PAUSE_MAX_ALTITUDE_CHANGE_M =
-10 m`: slow/steep climbing whose small horizontal displacement mimics a stop →
-  reject (above barometric drift, so real rests survive).
+1. **scan** (`scanStationaryRuns`) — anchor scan: advance `j` while
+   displacement(anchor, j) ≤ radius; a dwell ≥ `min(FRAGMENT_MIN_S = 15,
+thresholdS)` emits a _fragment_ and re-anchors at `j`, else the anchor slides.
+   Recording gaps count through the `time` values (unchanged position across a
+   gap = paused; a position jump = travel). O(n·k), near-linear at 1 Hz.
+2. **merge** (`mergeRuns`) — fragments separated by ≤ `MERGE_GAP_S = 60` whose
+   next anchor lies within `MERGE_DIST_FACTOR = 5`·radius of the break's anchor
+   fold into ONE break; the duration **includes the bridge** (sit, wander a few
+   meters for a photo, sit again = one pause). The spatial bound keeps
+   stop-and-go traffic (stops 100s of meters apart) from chaining — measured:
+   at t=60 this cut hike markers 17.2 → 11.7/activity and the worst ride
+   cluster 49 → 22 while ride totals stayed ≈ OLD−7 %.
+3. **validate** (`isRealStandstill`) — reject artefacts:
+   - _dead GPS_: the track never moved over the whole break (spread from the
+     anchor < `FROZEN_LATLNG_M = 2 m` — spread, not start→end, so a rest that
+     ends where it began is safe) while the path advanced >
+     `DEAD_GPS_ADVANCE_FACTOR = 6`·radius: receiver lost lock while the athlete
+     moved.
+   - _vertical movement_: net altitude change > `max(PAUSE_ALT_FLOOR_M = 5,
+PAUSE_ALT_RATE_M_PER_S = 0.05 · duration)` — slow/steep climbing misread as a
+     stop; the rate term lets long real rests drift barometrically while still
+     catching short grinds the old fixed 10 m bar missed.
+4. **threshold** — keep breaks ≥ `thresholdS`.
 
 ## ascents.ts — hysteresis segmentation (ascents & descents share one core)
 

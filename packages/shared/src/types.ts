@@ -117,6 +117,12 @@ export interface Settings {
   ascentDescentToleranceM: number
   /** Minimum stationary duration excluded from ascent/descent means, seconds. */
   pauseThresholdS: number
+  /**
+   * Radius the position must stay within for a moment to count as stationary,
+   * meters. Smaller = stricter (catches only true standstills but may split
+   * rests under heavy GPS jitter); larger = more tolerant.
+   */
+  pauseRadiusM: number
   /** Distance window for the terrain-slope series, meters. */
   slopeWindowM: number
   /**
@@ -134,6 +140,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ascentMinGainM: 30,
   ascentDescentToleranceM: 10,
   pauseThresholdS: 30,
+  // Matches PAUSE_RADIUS_M (see vspeed/pauses); tuned on production data.
+  pauseRadiusM: 5,
   slopeWindowM: 100,
   // Kept in step with MAX_HUMAN_VSPEED (the fixed metric cap) — see vspeed/stats.
   liftMaxVSpeed: 1400,

@@ -66,6 +66,16 @@ describe('computeVSpeedModel', () => {
     expect(model.pausedS).toBe(100)
   })
 
+  it('honours the pause-radius setting', () => {
+    // The standstill's GPS position is frozen, so any radius finds it; a huge
+    // radius instead swallows nearby slow travel into the pause, lengthening it.
+    const base = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
+    const wide = computeVSpeedModel(streamsWithPause(), { ...DEFAULT_SETTINGS, pauseRadiusM: 15 })
+    expect(base.pauses).toHaveLength(1)
+    expect(wide.pauses).toHaveLength(1)
+    expect(wide.pauses[0]!.durationS).toBeGreaterThan(base.pauses[0]!.durationS)
+  })
+
   it('computes the terrain slope on its own distance window', () => {
     const model = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
     // Climb: +0.2 m per 6 m forward ≈ 3.33 %

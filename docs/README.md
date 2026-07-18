@@ -27,10 +27,15 @@ since skiing/running downhill is genuinely fast). The chart cap is the
 value as a fixed constant.
 
 Ascent/descent means exclude **pauses**: periods where the GPS position stays
-within ~5 m for more than 30 s (threshold configurable) — detected from
-position, not from GPS speed. Each excluded pause is marked with a small round
-token on the chart's baseline, the pause length in seconds inside it, so you can
-see where and how long you stopped. Above the chart, a stats strip shows the
+within a small radius (the **Pause radius** setting, default 5 m) for longer
+than the **Pause threshold** (default 30 s) — detected from position, not from
+GPS speed. A break interrupted by a short nearby wander (stepping away for a
+photo and sitting back down) counts as **one** pause, wander included, instead
+of a string of separate markers; and a "pause" during which the altitude keeps
+changing (slow steep climbing) or the GPS track is frozen while the distance
+advances (lost GPS fix) is discarded as movement. Each excluded pause is marked
+with a small round token on the chart's baseline, the pause length in seconds
+inside it, so you can see where and how long you stopped. Above the chart, a stats strip shows the
 activity **length**, **total duration** (elapsed and moving), the **total paused
 time**, and the whole-activity ascent and descent means. A **map panel** beside
 the chart shows the activity trace with
