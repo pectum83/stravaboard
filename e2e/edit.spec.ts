@@ -40,7 +40,12 @@ test('renames and re-types an activity through the inline form', async ({ page }
   await page.locator('li.row').first().locator('.edit-toggle').click()
 
   const form = page.locator('form.edit')
-  await form.getByLabel('Activity name').fill('Renamed Peak')
+  // Type key-by-key (not fill) so a re-focus/re-select on every keystroke
+  // would drop characters — guards the "only one character sticks" bug.
+  const nameField = form.getByLabel('Activity name')
+  await nameField.fill('')
+  await nameField.pressSequentially('Renamed Peak')
+  await expect(nameField).toHaveValue('Renamed Peak')
   await form.getByLabel('Sport type').selectOption('Hike')
   await form.getByRole('button', { name: 'Save' }).click()
 

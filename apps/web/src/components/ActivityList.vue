@@ -28,9 +28,13 @@ const draftSport = ref('')
 const saving = ref(false)
 const editError = ref<string | null>(null)
 
-/** Focus + select the name field as soon as the edit form mounts. */
+// Function refs fire on every re-render; focus + select only the first time
+// the field appears for a given edit, or each keystroke would re-select all
+// text and overwrite what was typed.
+let focusedFor: number | null = null
 function focusNameInput(el: unknown): void {
-  if (el instanceof HTMLInputElement) {
+  if (el instanceof HTMLInputElement && focusedFor !== editingId.value) {
+    focusedFor = editingId.value
     el.focus()
     el.select()
   }
@@ -53,6 +57,7 @@ function startEdit(activity: ActivitySummary): void {
 function cancelEdit(): void {
   editingId.value = null
   editError.value = null
+  focusedFor = null
 }
 
 async function saveEdit(activity: ActivitySummary): Promise<void> {
@@ -75,6 +80,7 @@ async function saveEdit(activity: ActivitySummary): Promise<void> {
   try {
     await store.editActivity(activity.id, patch)
     editingId.value = null
+    focusedFor = null
   } catch (err) {
     editError.value = err instanceof Error ? err.message : String(err)
   } finally {
