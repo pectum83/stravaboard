@@ -140,7 +140,22 @@ export function buildChartOptions(
 }
 
 function toPairs(points: VSpeedPoint[]): ([number, number] | null)[] {
-  return points.map((p) => (p.y === null ? null : [p.x, p.y]))
+  // Collapse a run of samples at the SAME distance into one point. When the
+  // athlete stops, the distance stream freezes while time keeps advancing, so
+  // many samples land on one x; plotted as-is they stack into a vertical spike
+  // and the axis tooltip lists a value per sample. Keeping the last leaves a
+  // single point at that distance. (nulls stay — they break the line.)
+  const out: ([number, number] | null)[] = []
+  for (const p of points) {
+    if (p.y === null) {
+      out.push(null)
+      continue
+    }
+    const prev = out[out.length - 1]
+    if (prev && prev[0] === p.x) out[out.length - 1] = [p.x, p.y]
+    else out.push([p.x, p.y])
+  }
+  return out
 }
 
 function lineSeries(

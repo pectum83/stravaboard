@@ -47,18 +47,31 @@ median-filters on top.
 ## pauses.ts — position-based pause detection
 
 ```ts
-detectPauses(time, latlng|null, distance, {thresholdS, radiusM=5}) → Pause[]
+detectPauses(time, latlng|null, distance, altitude|null, {thresholdS, radiusM=5}) → Pause[]
 Pause { startIndex, endIndex, durationS }        // PAUSE_RADIUS_M = 5 (constant, not a setting)
 pausedTimeInRange(pauses, time, startIndex, endIndex) → seconds (clips overlaps)
 haversineM([lat,lng], [lat,lng]) → meters
 ```
 
 Anchor scan: advance `j` while displacement(anchor, j) ≤ radius; if the dwell
-`time[j−1]−time[i] ≥ thresholdS` emit pause and re-anchor at `j`, else `i++`.
-Displacement = haversine on latlng when present & length-matching, else
-`|distance[j]−distance[i]|` (fallback). Recording gaps count as paused time
-when the position is unchanged across the gap; a gap with a large position
-jump is travel, not a pause. Worst case O(n·k), near-linear at 1 Hz.
+`time[j−1]−time[i] ≥ thresholdS` the candidate is **validated** (below) and, kept
+or not, the scan re-anchors at `j`; else `i++`. Displacement = haversine on
+latlng when present & length-matching, else `|distance[j]−distance[i]|` (fallback).
+Recording gaps count as paused time when the position is unchanged across the
+gap; a gap with a large position jump is travel, not a pause. Worst case O(n·k),
+near-linear at 1 Hz.
+
+**Candidate validation** (`isRealStandstill`, tuned on production hike/ride data —
+both signals the horizontal scan is fooled by; pass despiked `altitude`, null
+skips the vertical check):
+
+- **Dead GPS** — the track is frozen (`straight < FROZEN_LATLNG_M = 2 m` start→end)
+  while the path advanced (`> DEAD_GPS_ADVANCE_M = 30 m`): the receiver lost lock
+  (start-of-activity, tunnel, wheel/foot-pod distance) while the athlete moved →
+  reject.
+- **Vertical movement** — net altitude change `> PAUSE_MAX_ALTITUDE_CHANGE_M =
+10 m`: slow/steep climbing whose small horizontal displacement mimics a stop →
+  reject (above barometric drift, so real rests survive).
 
 ## ascents.ts — hysteresis segmentation (ascents & descents share one core)
 
@@ -114,10 +127,11 @@ per metric when nothing qualifies. All three persist to
 `activities.ascentMeanVSpeed` / `ascentGainM` / `descentLossM`; the sync wraps the
 call in `SyncService.metricsFor` so a malformed stream set degrades to
 `{0, 0, 0}` instead of aborting the whole sync. **Changing this algorithm (or
-`MAX_HUMAN_VSPEED`) requires recomputing stored values** — migrations
-`0004`/`0005`/`0006`/`0007` (data-and-api.md) NULL `ascent_mean_vspeed` so the
-next sync's local `computeMissingMetrics` refills ALL metric columns with no API
-calls (`listMissingMetrics` keys off the NULL speed column).
+`MAX_HUMAN_VSPEED`, or pause detection — pauses feed the mean) requires
+recomputing stored values** — migrations `0004`/`0005`/`0006`/`0007`/`0008`
+(data-and-api.md) NULL `ascent_mean_vspeed` so the next sync's local
+`computeMissingMetrics` refills ALL metric columns with no API calls
+(`listMissingMetrics` keys off the NULL speed column).
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 

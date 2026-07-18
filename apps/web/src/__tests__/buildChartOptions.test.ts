@@ -205,4 +205,20 @@ describe('buildChartOptions', () => {
     const last = data[data.length - 1]!
     expect(last![0]).toBeCloseTo(1.8, 6) // 1800 m = 1.8 km
   })
+
+  it('collapses samples that share the same distance (a stop) to one point', () => {
+    // The paused fixture freezes distance for 60 s; without collapsing, ~60
+    // samples would stack on one x. Assert no two consecutive points repeat x.
+    for (const idx of [0, 1, 2]) {
+      // instant, short, long
+      const data = (options(pausedStreams()).series as LineSeriesOption[])[idx]!.data as (
+        [number, number] | null
+      )[]
+      for (let k = 1; k < data.length; k++) {
+        const a = data[k - 1]
+        const b = data[k]
+        if (a && b) expect(b[0]).not.toBe(a[0])
+      }
+    }
+  })
 })

@@ -42,13 +42,40 @@ export interface VSpeedModel {
   descentStats: SegmentAggregate
 }
 
+/** An empty model — streams that can't be analysed render as a blank chart. */
+function emptyModel(streams: ActivityStreams): VSpeedModel {
+  const noSegments = aggregateSegments([])
+  return {
+    streams,
+    instant: [],
+    short: [],
+    long: [],
+    slope: [],
+    ascents: [],
+    descents: [],
+    excludedAscents: [],
+    pauses: [],
+    pausedS: 0,
+    ascentStats: noSegments,
+    descentStats: noSegments,
+  }
+}
+
 /** Compute all vertical-speed series and aggregates once per streams+settings. */
 export function computeVSpeedModel(streams: ActivityStreams, settings: Settings): VSpeedModel {
   const { time, distance } = streams
+  const rawAltitude = streams.altitude ?? []
+  // Every derivation needs time/distance/altitude to line up. Some activities
+  // carry an altitude stream with a missing or partial distance stream (manual
+  // or broken entries); rather than throw deep in a windowing helper, render an
+  // empty chart. (Empty streams line up trivially and flow through normally.)
+  if (distance.length !== time.length || rawAltitude.length !== time.length) {
+    return emptyModel(streams)
+  }
   // Despike once at the entry so every derivation (series, slope, segments)
   // sees GPS-artefact-free altitude; the instant series still median-filters
   // on top to tame remaining barometric jitter.
-  const altitude = despike(streams.altitude ?? [])
+  const altitude = despike(rawAltitude)
 
   const smoothed = medianFilter(altitude, INSTANT_SMOOTHING)
   const instant = windowedVerticalSpeed(time, distance, smoothed, {
@@ -65,7 +92,9 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
   const pauses =
     time.length === 0
       ? []
-      : detectPauses(time, streams.latlng, distance, { thresholdS: settings.pauseThresholdS })
+      : detectPauses(time, streams.latlng, distance, altitude, {
+          thresholdS: settings.pauseThresholdS,
+        })
   const segmentOptions = {
     minGainM: settings.ascentMinGainM,
     descentToleranceM: settings.ascentDescentToleranceM,

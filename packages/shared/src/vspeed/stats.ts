@@ -89,7 +89,7 @@ export function activityMetrics(streams: ActivityStreams): ActivityMetrics | nul
     return null
   }
   const altitude = despike(rawAltitude)
-  const pauses = detectPauses(streams.time, streams.latlng, streams.distance, {
+  const pauses = detectPauses(streams.time, streams.latlng, streams.distance, altitude, {
     thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
   })
   const segmentOptions = {

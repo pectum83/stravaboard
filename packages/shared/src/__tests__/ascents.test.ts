@@ -89,7 +89,7 @@ describe('detectAscents', () => {
     // +0.5 m/s at 6 m/s horizontal for 1000 s, with a 100 s standstill in the
     // middle: 500 m gain, elapsed 1100 s, effective 1000 s.
     const s = insertPause(withLatlng(ramp(1000, 6, 0.5)), 500, 100)
-    const pauses = detectPauses(s.time, s.latlng, s.distance, { thresholdS: 30 })
+    const pauses = detectPauses(s.time, s.latlng, s.distance, s.altitude, { thresholdS: 30 })
     expect(pauses).toEqual([{ startIndex: 500, endIndex: 600, durationS: 100 }])
 
     const raw = detectAscents(s.time, s.distance, s.altitude, OPTS)
@@ -116,7 +116,7 @@ describe('detectAscents', () => {
       altitude.push(top - t * 0.5)
     }
     const s = insertPause(withLatlng({ time, distance, altitude }), 500, 100)
-    const pauses = detectPauses(s.time, s.latlng, s.distance, { thresholdS: 30 })
+    const pauses = detectPauses(s.time, s.latlng, s.distance, s.altitude, { thresholdS: 30 })
     const ascents = detectAscents(s.time, s.distance, s.altitude, { ...OPTS, pauses })
     expect(ascents).toHaveLength(1)
     expect(ascents[0]!.effectiveTimeS).toBe(500)

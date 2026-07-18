@@ -21,6 +21,26 @@ export interface PauseOptions {
  */
 export const PAUSE_RADIUS_M = 5
 
+/**
+ * A GPS track that moves less than this over a whole candidate pause is treated
+ * as FROZEN (not updating). Combined with a path that advanced past
+ * `DEAD_GPS_ADVANCE_M`, it means the receiver lost lock while the athlete kept
+ * moving — start-of-activity, a tunnel, or a wheel/foot-pod feeding distance
+ * with no GPS — so the "standstill" is spurious. Measured on production data:
+ * genuine rests keep a few metres of latlng jitter (well above 2 m), whereas
+ * dead-GPS runs sit at exactly 0 while the distance advances hundreds of metres.
+ */
+const FROZEN_LATLNG_M = 2
+const DEAD_GPS_ADVANCE_M = 30
+
+/**
+ * A real standstill barely changes altitude. A candidate pause whose NET
+ * altitude change exceeds this is slow (often steep) movement misread as a
+ * stop — the horizontal displacement stayed small but the athlete kept climbing
+ * or descending. Comfortably above barometric drift/noise over a rest.
+ */
+const PAUSE_MAX_ALTITUDE_CHANGE_M = 10
+
 const EARTH_RADIUS_M = 6_371_000
 
 /** Great-circle distance between two [lat, lng] points (degrees), meters. */
@@ -38,10 +58,18 @@ export function haversineM(a: readonly [number, number], b: readonly [number, nu
  * Detect pauses: periods where the position stays within `radiusM` of an
  * anchor point for at least `thresholdS` seconds.
  *
- * Displacement comes from the GPS track (`latlng`, Strava order [lat, lng])
- * when available, so integrated jitter in the distance stream cannot hide a
- * standstill. When `latlng` is absent (or its length does not match), the
- * cumulative distance stream is the fallback.
+ * Horizontal displacement comes from the GPS track (`latlng`, Strava order
+ * [lat, lng]) when available, so integrated jitter in the distance stream
+ * cannot hide a standstill. When `latlng` is absent (or its length does not
+ * match), the cumulative distance stream is the fallback.
+ *
+ * Each candidate is then **validated** against the two signals the horizontal
+ * scan can be fooled by (both tuned on production hike/ride data):
+ * - **Dead GPS** — the track froze (didn't update) while the path clearly
+ *   advanced. The athlete was moving; the receiver just wasn't reporting it.
+ * - **Vertical movement** — a genuine rest does not gain or lose altitude, so a
+ *   large net altitude change means slow/steep movement, not a stop. Needs the
+ *   (ideally despiked) `altitude` stream; skipped when it is absent/mismatched.
  *
  * Recording gaps count via the `time` values: a gap while the position is
  * unchanged is a pause, a gap with movement is not.
@@ -53,6 +81,7 @@ export function detectPauses(
   time: readonly number[],
   latlng: readonly (readonly [number, number])[] | null,
   distance: readonly number[],
+  altitude: readonly number[] | null,
   { thresholdS, radiusM = PAUSE_RADIUS_M }: PauseOptions,
 ): Pause[] {
   const n = time.length
@@ -60,6 +89,7 @@ export function detectPauses(
     throw new Error(`stream length mismatch: time=${n} distance=${distance.length}`)
   }
   const track = latlng !== null && latlng.length === n && n > 0 ? latlng : null
+  const alt = altitude !== null && altitude.length === n ? altitude : null
   const disp = track
     ? (i: number, j: number) => haversineM(track[i]!, track[j]!)
     : (i: number, j: number) => Math.abs(distance[j]! - distance[i]!)
@@ -72,13 +102,34 @@ export function detectPauses(
     const last = j - 1
     const durationS = time[last]! - time[i]!
     if (last > i && durationS >= thresholdS) {
-      pauses.push({ startIndex: i, endIndex: last, durationS })
+      // A candidate long enough to count — keep it only if it survives the
+      // dead-GPS and vertical-movement checks. Either way re-anchor past it.
+      if (isRealStandstill(track, distance, alt, i, last)) {
+        pauses.push({ startIndex: i, endIndex: last, durationS })
+      }
       i = j
     } else {
       i++
     }
   }
   return pauses
+}
+
+/** Reject candidate pauses that are dead-GPS artefacts or slow vertical movement. */
+function isRealStandstill(
+  track: readonly (readonly [number, number])[] | null,
+  distance: readonly number[],
+  alt: readonly number[] | null,
+  start: number,
+  end: number,
+): boolean {
+  if (track) {
+    const straight = haversineM(track[start]!, track[end]!)
+    const advance = Math.abs(distance[end]! - distance[start]!)
+    if (straight < FROZEN_LATLNG_M && advance > DEAD_GPS_ADVANCE_M) return false
+  }
+  if (alt && Math.abs(alt[end]! - alt[start]!) > PAUSE_MAX_ALTITUDE_CHANGE_M) return false
+  return true
 }
 
 /**

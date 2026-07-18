@@ -73,6 +73,10 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   drizzle-kit needs a TTY) adds `descent_loss_m` + its index and nulls
   `ascent_mean_vspeed` so the next sync computes ALL THREE metrics. **Until that
   sync runs the descent sort is empty — trigger a sync after deploying.**
+- Migration `0008_recompute_pauses.sql` (NULL-reset only; snapshot = 0007's with
+  a new id/prevId, schema unchanged) nulls `ascent_mean_vspeed` after the pause
+  detector gained dead-GPS + vertical-movement validation (pauses feed the
+  pause-excluded mean). Same "sync after deploying" caveat.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 

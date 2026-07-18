@@ -81,6 +81,18 @@ describe('computeVSpeedModel', () => {
     expect(model.descentStats.meanVSpeed).toBeCloseTo(-3600, 4)
   })
 
+  it('renders an empty model (no throw) when distance and time lengths disagree', () => {
+    // Some manual/broken entries carry altitude but a missing distance stream.
+    const model = computeVSpeedModel(
+      { time: [0, 1, 2], distance: [], altitude: [100, 101, 102], latlng: null },
+      DEFAULT_SETTINGS,
+    )
+    expect(model.short).toEqual([])
+    expect(model.pauses).toEqual([])
+    expect(model.pausedS).toBe(0)
+    expect(model.ascentStats.meanVSpeed).toBeNull()
+  })
+
   it('handles streams without altitude or GPS', () => {
     const model = computeVSpeedModel(
       { time: [], distance: [], altitude: null, latlng: null },

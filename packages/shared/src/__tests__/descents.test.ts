@@ -80,7 +80,7 @@ describe('detectDescents', () => {
       altitude.push(top - t * 0.5)
     }
     const s = insertPause(withLatlng({ time, distance, altitude }), 500, 100)
-    const pauses = detectPauses(s.time, s.latlng, s.distance, { thresholdS: 30 })
+    const pauses = detectPauses(s.time, s.latlng, s.distance, s.altitude, { thresholdS: 30 })
     expect(pauses).toHaveLength(1)
 
     const descents = detectDescents(s.time, s.distance, s.altitude, { ...OPTS, pauses })

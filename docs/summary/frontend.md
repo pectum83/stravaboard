@@ -82,9 +82,14 @@ pauses, pausedS, ascentStats, descentStats}` (`pausedS` = Σ pause durations, th
   `medianFilter(alt, 5)` on top. Ascents are split via `partitionSegments(...,
 settings.liftMaxVSpeed)`: lift/artefact climbs above the cap go to
   `excludedAscents` and out of `ascents`/`ascentStats`; descents are not capped.
-  Single computation point for chart + stats + segments.
+  Single computation point for chart + stats + segments. Streams whose
+  time/distance/altitude lengths disagree (a missing/partial distance stream)
+  return an **empty model** rather than throwing deep in a windowing helper.
 - `chart/buildChartOptions.ts` — **rendering only**, `(model, settings) →
-EChartsOption`. 6 line series (7 when there are excluded climbs); colors =
+EChartsOption`. `toPairs` collapses a run of samples at the SAME distance to one
+  point (a stop freezes distance while time advances, so many samples share one
+  x — plotted raw they stack into a vertical spike and duplicate the tooltip
+  rows). 6 line series (7 when there are excluded climbs); colors =
   validated dataviz categorical slots (blue/aqua/yellow instant/short/long, green
   ascent, magenta `#e87ba4` descent, violet `#4a3aa7` slope — orange failed
   validation next to magenta; sub-3:1 colors are relieved by direct end-labels).
