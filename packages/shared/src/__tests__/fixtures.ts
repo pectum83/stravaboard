@@ -76,6 +76,13 @@ export function rampWithGap(durationS: number, gapS: number): Streams {
   return { time, distance, altitude }
 }
 
+/** Add a bad-GPS altitude spike of `deltaM` meters at `atIndex` (single sample). */
+export function spike(streams: Streams, atIndex: number, deltaM: number): Streams {
+  const altitude = [...streams.altitude]
+  altitude[atIndex] = altitude[atIndex]! + deltaM
+  return { ...streams, altitude }
+}
+
 export interface StreamsWithLatlng extends Streams {
   latlng: [number, number][]
 }

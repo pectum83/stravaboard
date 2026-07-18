@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Ascent } from '../vspeed/ascents.js'
-import { activityAscentMean, aggregateSegments } from '../vspeed/stats.js'
-import { flat, insertPause, ramp, withLatlng } from './fixtures.js'
+import {
+  activityAscentMean,
+  aggregateSegments,
+  MAX_HUMAN_VSPEED,
+  partitionSegments,
+} from '../vspeed/stats.js'
+import { flat, insertPause, ramp, spike, withLatlng } from './fixtures.js'
 
 function segment(gainM: number, effectiveTimeS: number): Ascent {
   return {
@@ -35,11 +40,45 @@ describe('aggregateSegments', () => {
   })
 })
 
+describe('partitionSegments', () => {
+  it('keeps human-speed segments and excludes faster ones (both directions)', () => {
+    const human = segment(300, 600) // 1800 m/h
+    const lift = segment(600, 600) // 3600 m/h
+    const artefactDrop = segment(-600, 600) // -3600 m/h
+    const { kept, excluded } = partitionSegments([human, lift, artefactDrop])
+    expect(kept).toEqual([human])
+    expect(excluded).toEqual([lift, artefactDrop])
+  })
+
+  it('defaults its threshold to MAX_HUMAN_VSPEED', () => {
+    const justUnder = segment(MAX_HUMAN_VSPEED - 1, 3600) // (MAX-1) m/h
+    const justOver = segment(MAX_HUMAN_VSPEED + 1, 3600)
+    expect(partitionSegments([justUnder, justOver])).toEqual({
+      kept: [justUnder],
+      excluded: [justOver],
+    })
+  })
+})
+
 describe('activityAscentMean (standard parameters)', () => {
   it('computes the pause-excluded mean of a climb', () => {
     // 500 m gain over 1000 s + a 100 s standstill → 1800 m/h effective.
     const s = insertPause(withLatlng(ramp(1000, 6, 0.5)), 500, 100)
     expect(activityAscentMean(s)).toBeCloseTo(1800, 4)
+  })
+
+  it('excludes a mechanical lift (faster than any human climb)', () => {
+    // 0.9 m/s vertical = 3240 m/h over 540 m — a lift; no human ascent remains.
+    const lift = { ...ramp(600, 6, 0.9), latlng: null }
+    expect(activityAscentMean(lift)).toBe(0)
+  })
+
+  it('despikes a GPS artefact so a real climb is measured correctly', () => {
+    // A steady climb with a +40 m bad-GPS spike partway up reads the same as the
+    // clean climb (the spike is removed, not turned into a fake fast segment).
+    const clean = { ...ramp(600, 6, 0.222), latlng: null }
+    const spiked = { ...spike(ramp(600, 6, 0.222), 300, 40), latlng: null }
+    expect(activityAscentMean(spiked)).toBeCloseTo(activityAscentMean(clean)!, 5)
   })
 
   it('is 0 with altitude but no qualifying ascent, null without altitude', () => {

@@ -49,6 +49,12 @@ applied automatically by `openDb`).
 - Migration `0003_activity_metrics.sql` (also hand-written incl.
   snapshot/journal) adds `ascent_mean_vspeed` + `idx_activities_athlete_vspeed`.
   Existing rows stay NULL and are backfilled locally on next sync (no API).
+- Migration `0004_recompute_metrics.sql` (hand-written; snapshot = 0003's with a
+  new id/prevId, schema unchanged) runs `UPDATE activities SET
+ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
+  - the lift/artefact cap. The next sync's local `computeMissingMetrics` refills
+    every row with the new algorithm (no API). **Until that sync runs the
+    ascent-speed sort/badges are empty — trigger a sync after deploying.**
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 

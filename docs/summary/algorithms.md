@@ -28,10 +28,21 @@ binary search. Distance-domain, so pauses/time gaps need no handling; `y=null`
 only when the window has zero horizontal span (fully stationary). Returns
 `VSpeedPoint[]` (x in km).
 
-## smoothing.ts — `medianFilter(values, size)`
+## smoothing.ts — `medianFilter(values, size)` + `despike(values, opts)`
 
-Centered odd-size median (window shrinks at edges; throws on even size). Used
-only for the instant series (width 5) to tame barometric jitter.
+`medianFilter`: centered odd-size median (window shrinks at edges; throws on
+even size). Used only for the instant series (width 5) to tame barometric jitter.
+
+`despike(values, {windowSamples, madK, minDeviationM})` — robust **Hampel**
+filter: replace a sample deviating from its local median by more than
+`max(madK·1.4826·MAD, minDeviationM)` with that median. Removes isolated GPS
+altitude spikes (bad fixes, reacquisition steps) without touching real climbs (a
+sustained rise carries the median with it); the `minDeviationM` floor stops
+smooth data (MAD≈0) from being over-corrected. Fixed `DESPIKE = {windowSamples:7,
+madK:4, minDeviationM:5}`. **Applied once at pipeline entry** in both
+`computeVSpeedModel` and `activityAscentMean`, so every derivation (series,
+slope, segments, stored metric) sees despiked altitude; the instant series then
+median-filters on top.
 
 ## pauses.ts — position-based pause detection
 
@@ -74,17 +85,29 @@ summit sample) but is subtracted from the following descent.
 `aggregateSegments(segments) → {totalGainM, totalTimeS, meanVSpeed|null}` =
 Σgain / Σeffective time · 3600; null when no segments.
 
+**Lift / artefact cap.** `MAX_HUMAN_VSPEED = 2000` (m/h) + `partitionSegments(
+segments, maxAbsVSpeed=MAX_HUMAN_VSPEED) → {kept, excluded}` split on
+`|meanVSpeed| > cap`. Segments faster than any human (mechanical lifts, or GPS
+artefacts that survived despiking) are dropped from the ascent mean, the metric
+and the badges. **Applied to ascents only** — descents legitimately exceed the
+cap (skiing/running downhill), and descent spikes are already handled by despike.
+The chart keeps excluded climbs as `VSpeedModel.excludedAscents` (drawn greyed).
+
 `activityAscentMean(streams) → number|null` — the ranking metric behind the
-list's "Best ascent speed" sort and the 🥇🥈🥉 badges. Runs `detectAscents` +
-`detectPauses` with the FIXED `STANDARD_SEGMENT_PARAMS`
-(`{minGainM:30, descentToleranceM:10, pauseThresholdS:30}`) and aggregates —
-deliberately settings-independent so rankings stay stable and the server never
-recomputes 1400+ activities on a settings change. Returns `null` with no
-altitude **or when time/distance/altitude lengths disagree** (e.g. an altitude
-stream with a missing/partial distance stream — unrankable, never throws),
-`0` when no ascent qualifies. Persisted to `activities.ascentMeanVSpeed`; the
-sync wraps the call in `SyncService.ascentMetric` so a malformed stream set
-degrades to `0` instead of aborting the whole sync.
+list's "Best ascent speed" sort and the 🥇🥈🥉 badges. **Despikes altitude**,
+runs `detectAscents` + `detectPauses` with the FIXED `STANDARD_SEGMENT_PARAMS`
+(`{minGainM:30, descentToleranceM:10, pauseThresholdS:30}`), then aggregates
+**only `partitionSegments(...).kept`** — deliberately settings-independent so
+rankings stay stable. Returns `null` with no altitude **or when
+time/distance/altitude lengths disagree** (e.g. an altitude stream with a
+missing/partial distance stream — unrankable, never throws), `0` when no ascent
+qualifies (incl. when every ascent was a lift). Persisted to
+`activities.ascentMeanVSpeed`; the sync wraps the call in
+`SyncService.ascentMetric` so a malformed stream set degrades to `0` instead of
+aborting the whole sync. **Changing this algorithm requires recomputing stored
+values** — see migration `0004_recompute_metrics` (data-and-api.md): it NULLs
+every `ascent_mean_vspeed` so the next sync's local `computeMissingMetrics`
+refills them with no API calls.
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 
@@ -92,7 +115,9 @@ degrades to `0` instead of aborting the whole sync.
 (truth = vSpeed·3600), `flat`, `sawtoothClimb(durS, periodS, dipM)`,
 `rampWithGap`, `withLatlng(streams)` (northward track, displacement ≡
 distance), `jitterLatlng(latlng, ampM)` (deterministic), `insertPause(streams,
-atIndex, durationS)` (freezes position/alt, shifts later times). **Use a
+atIndex, durationS)` (freezes position/alt, shifts later times),
+`spike(streams, atIndex, deltaM)` (single-sample bad-GPS altitude spike, for
+despike tests). **Use a
 horizontal speed of 6 m/s when you need exact pause boundaries** (one sample
 leaves the 5 m radius); at 1 m/s the anchor scan extends the pause a few
 samples on each side.

@@ -1,5 +1,6 @@
 import { detectAscents, type Ascent } from './ascents.js'
 import { detectPauses } from './pauses.js'
+import { despike } from './smoothing.js'
 import type { ActivityStreams } from '../types.js'
 
 /** Whole-activity aggregate over ascent (or descent) segments. */
@@ -25,19 +26,53 @@ export const STANDARD_SEGMENT_PARAMS = {
 } as const
 
 /**
+ * Ascent/descent segments faster than this (m/h, absolute) are treated as
+ * non-human — a mechanical lift, or a GPS artefact that survived despiking —
+ * and excluded from the ascent/descent means, the ranking metric and the
+ * badges. Elite human ascent tops out around 1900 m/h; lifts run ~2500 m/h and
+ * up, so 2000 separates them cleanly. Fixed (like `STANDARD_SEGMENT_PARAMS`) so
+ * rankings stay comparable across activities.
+ */
+export const MAX_HUMAN_VSPEED = 2000
+
+/**
+ * Split segments into those within human vertical speed (`kept`) and those above
+ * it (`excluded` — lifts / artefacts). Symmetric on |meanVSpeed|, so it also
+ * catches artefact-driven fast descents.
+ */
+export function partitionSegments(
+  segments: readonly Ascent[],
+  maxAbsVSpeed = MAX_HUMAN_VSPEED,
+): { kept: Ascent[]; excluded: Ascent[] } {
+  const kept: Ascent[] = []
+  const excluded: Ascent[] = []
+  for (const s of segments) {
+    if (Math.abs(s.meanVSpeed) > maxAbsVSpeed) excluded.push(s)
+    else kept.push(s)
+  }
+  return { kept, excluded }
+}
+
+/**
  * Whole-activity mean ascent speed (m/h, pause-excluded) with the standard
  * parameters. Returns null when the activity has no altitude data, 0 when it
  * has altitude but no qualifying ascent.
  */
 export function activityAscentMean(streams: ActivityStreams): number | null {
-  const altitude = streams.altitude
-  if (altitude === null || altitude.length === 0) return null
+  const rawAltitude = streams.altitude
+  if (rawAltitude === null || rawAltitude.length === 0) return null
   // Segmentation needs time/distance/altitude to line up. Some activities carry
   // an altitude stream but a missing or partial distance stream (e.g. a manual
   // or indoor entry); those can't be measured consistently, so they don't rank.
-  if (streams.time.length !== altitude.length || streams.distance.length !== altitude.length) {
+  if (
+    streams.time.length !== rawAltitude.length ||
+    streams.distance.length !== rawAltitude.length
+  ) {
     return null
   }
+  // Remove GPS altitude spikes first, then drop lift/artefact-fast segments, so
+  // the stored ranking reflects real human climbing only.
+  const altitude = despike(rawAltitude)
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, {
     thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
   })
@@ -46,7 +81,7 @@ export function activityAscentMean(streams: ActivityStreams): number | null {
     descentToleranceM: STANDARD_SEGMENT_PARAMS.descentToleranceM,
     pauses,
   })
-  return aggregateSegments(ascents).meanVSpeed ?? 0
+  return aggregateSegments(partitionSegments(ascents).kept).meanVSpeed ?? 0
 }
 
 /** Aggregate segments into a whole-activity mean: Σ gain / Σ effective time. */

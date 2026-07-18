@@ -71,14 +71,20 @@ Fetches `api.config()` on mount for the MapTiler key.
 ## Chart
 
 - `chart/computeVSpeed.ts` — `computeVSpeedModel(streams, settings) →
-VSpeedModel {streams, instant, short, long, ascents, descents, pauses,
-ascentStats, descentStats}`. Instant series runs on `medianFilter(alt, 5)`.
-  Single computation point for chart + stats + segments.
+VSpeedModel {streams, instant, short, long, ascents, descents, excludedAscents,
+pauses, ascentStats, descentStats}`. Altitude is `despike`d once at entry
+  (feeds every series/slope/segment); the instant series then runs
+  `medianFilter(alt, 5)` on top. Ascents are split via `partitionSegments`:
+  lift/artefact climbs (>`MAX_HUMAN_VSPEED`) go to `excludedAscents` and out of
+  `ascents`/`ascentStats`; descents are not capped. Single computation point for
+  chart + stats + segments.
 - `chart/buildChartOptions.ts` — **rendering only**, `(model, settings) →
-EChartsOption`. 6 line series; colors = validated dataviz categorical slots
-  (blue/aqua/yellow instant/short/long, green ascent, magenta `#e87ba4`
-  descent, violet `#4a3aa7` slope — orange failed validation next to magenta;
-  sub-3:1 colors are relieved by direct end-labels). The slope series is
+EChartsOption`. 6 line series (7 when there are excluded climbs); colors =
+  validated dataviz categorical slots (blue/aqua/yellow instant/short/long, green
+  ascent, magenta `#e87ba4` descent, violet `#4a3aa7` slope — orange failed
+  validation next to magenta; sub-3:1 colors are relieved by direct end-labels).
+  A muted-grey (`#898781`) `Excluded (lift/artefact)` segment series is inserted
+  before slope **only when `model.excludedAscents` is non-empty**. The slope series is
   dashed on a second right-side `%` yAxis (`yAxisIndex: 1`, `alignTicks` so
   zero lines match) with its own tooltip valueFormatter. Third param
   `{compact}` (phones): tighter grid, no series-name endLabels and no `m/h`

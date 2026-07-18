@@ -24,7 +24,37 @@ function streamsWithPause(): ActivityStreams {
   return { time, distance, altitude, latlng }
 }
 
+/** Steady climb at `vSpeedMS` m/s, 6 m/s forward, no GPS. */
+function climbAt(vSpeedMS: number, durationS = 600): ActivityStreams {
+  const time: number[] = []
+  const distance: number[] = []
+  const altitude: number[] = []
+  for (let t = 0; t <= durationS; t++) {
+    time.push(t)
+    distance.push(6 * t)
+    altitude.push(1000 + vSpeedMS * t)
+  }
+  return { time, distance, altitude, latlng: null }
+}
+
 describe('computeVSpeedModel', () => {
+  it('moves a lift-speed climb to excludedAscents and out of the stats', () => {
+    const model = computeVSpeedModel(climbAt(0.9), DEFAULT_SETTINGS) // 3240 m/h
+    expect(model.ascents).toHaveLength(0)
+    expect(model.excludedAscents).toHaveLength(1)
+    expect(model.excludedAscents[0]!.meanVSpeed).toBeGreaterThan(2000)
+    expect(model.ascentStats.meanVSpeed).toBeNull()
+  })
+
+  it('despikes a GPS altitude spike so it never becomes a segment', () => {
+    const flatClimb = climbAt(0)
+    flatClimb.altitude![300] = flatClimb.altitude![300]! + 40 // bad GPS fix
+    const model = computeVSpeedModel(flatClimb, DEFAULT_SETTINGS)
+    // Without despiking, the spike would form a >30 m fake (excluded) climb.
+    expect(model.ascents).toHaveLength(0)
+    expect(model.excludedAscents).toHaveLength(0)
+  })
+
   it('excludes detected pauses from ascent means', () => {
     const model = computeVSpeedModel(streamsWithPause(), DEFAULT_SETTINGS)
     expect(model.pauses).toHaveLength(1)

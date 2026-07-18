@@ -154,6 +154,25 @@ describe('SyncService', () => {
     expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
   })
 
+  it('excludes a lift/artefact-fast climb from the stored metric', async () => {
+    const db = connectedDb()
+    upsertActivity(db, { ...makeRow(400, '2025-02-01T08:00:00Z'), streamsStatus: 'done' })
+    const time = [],
+      distance = [],
+      altitude = []
+    for (let t = 0; t <= 600; t++) {
+      time.push(t)
+      distance.push(t * 6)
+      altitude.push(100 + t * 0.9) // 3240 m/h — faster than any human climb
+    }
+    saveStreams(db, 400, { time, distance, altitude, latlng: [] }, '2025')
+
+    const { sync } = makeSync(db, { activities: [] })
+    await runSync(sync)
+    // The lift is dropped, leaving no rankable ascent → 0 (computed, unrankable).
+    expect(getActivity(db, 400)?.ascentMeanVSpeed).toBe(0)
+  })
+
   it('marks activities without streams as none and keeps going', async () => {
     const db = connectedDb()
     const { sync } = makeSync(db, { activities: [A1, A2], noStreams: [101] })

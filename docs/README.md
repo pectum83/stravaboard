@@ -17,6 +17,13 @@ distance:
 - **Terrain slope** — the grade in % over a 100 m distance window
   (configurable), dashed on its own right-side axis
 
+Bad GPS is filtered out: altitude **spikes are despiked** before any analysis
+(so a stray fix at the end of a track no longer invents a climb), and
+**implausibly fast climbs** — mechanical ski lifts, or artefacts faster than any
+human ascent — are shown greyed on the chart and left out of the ascent mean,
+badges and sort (descents aren't capped, since skiing/running downhill is
+genuinely fast).
+
 Ascent/descent means exclude **pauses**: periods where the GPS position stays
 within ~5 m for more than 30 s (threshold configurable) — detected from
 position, not from GPS speed. Whole-activity ascent and descent means are shown

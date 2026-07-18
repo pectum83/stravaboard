@@ -49,15 +49,25 @@ export function buildChartOptions(
     ),
     segmentSeries('Ascent mean', model.ascents, COLORS.ascent),
     segmentSeries('Descent mean', model.descents, COLORS.descent),
-    // Terrain slope lives on its own % axis (index 1); dashed to signal the
-    // different unit family.
+  ]
+
+  // Lift / GPS-artefact climbs, excluded from the ascent mean — shown greyed so
+  // the exclusion is visible. Only added when there are any, to keep the legend
+  // clean. (Descents are never capped, so there is nothing excluded for them.)
+  if (model.excludedAscents.length > 0) {
+    series.push(segmentSeries('Excluded (lift/artefact)', model.excludedAscents, INK_MUTED))
+  }
+
+  // Terrain slope lives on its own % axis (index 1); dashed to signal the
+  // different unit family.
+  series.push(
     lineSeries(`Slope (${settings.slopeWindowM}m)`, toPairs(model.slope), COLORS.slope, {
       yAxisIndex: 1,
       lineStyle: { width: 1.5, type: 'dashed', opacity: 0.8 },
       sampling: 'lttb',
       tooltip: { valueFormatter: (v) => (typeof v === 'number' ? `${v.toFixed(1)} %` : '—') },
     }),
-  ]
+  )
 
   if (compact) {
     for (const s of series) s.endLabel = { show: false }

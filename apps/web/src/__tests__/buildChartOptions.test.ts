@@ -18,6 +18,19 @@ function climbStreams(): ActivityStreams {
   return { time, distance, altitude, latlng: null }
 }
 
+/** A lift-speed climb (0.9 m/s ≈ 3240 m/h) that must be excluded. */
+function liftStreams(): ActivityStreams {
+  const time: number[] = []
+  const distance: number[] = []
+  const altitude: number[] = []
+  for (let t = 0; t <= 600; t++) {
+    time.push(t)
+    distance.push(6 * t)
+    altitude.push(1000 + 0.9 * t)
+  }
+  return { time, distance, altitude, latlng: null }
+}
+
 function options(streams = climbStreams(), settings = DEFAULT_SETTINGS) {
   return buildChartOptions(computeVSpeedModel(streams, settings), settings)
 }
@@ -117,6 +130,21 @@ describe('buildChartOptions', () => {
     // Per-segment value labels survive compact mode.
     const ascentEnd = (series[3]!.data as { label?: { show: boolean } }[])[1]!
     expect(ascentEnd.label?.show).toBe(true)
+  })
+
+  it('adds a greyed excluded series only when lift/artefact segments exist', () => {
+    const clean = (options().series as LineSeriesOption[]).map((s) => s.name)
+    expect(clean).not.toContain('Excluded (lift/artefact)')
+    expect(clean).toHaveLength(6)
+
+    const withLift = options(liftStreams()).series as LineSeriesOption[]
+    const names = withLift.map((s) => s.name)
+    expect(names).toContain('Excluded (lift/artefact)')
+    const idx = names.indexOf('Excluded (lift/artefact)')
+    // Inserted just before the slope series, drawn in the muted grey.
+    expect(names[idx + 1]).toBe('Slope (100m)')
+    expect(withLift[idx]!.color).toBe('#898781')
+    expect(withLift[idx]!.symbolSize).toBe(0)
   })
 
   it('keeps x values in kilometers', () => {

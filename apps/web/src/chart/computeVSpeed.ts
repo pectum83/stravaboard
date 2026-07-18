@@ -1,9 +1,11 @@
 import {
   aggregateSegments,
+  despike,
   detectAscents,
   detectDescents,
   detectPauses,
   medianFilter,
+  partitionSegments,
   windowedSlope,
   windowedVerticalSpeed,
   type ActivityStreams,
@@ -27,6 +29,12 @@ export interface VSpeedModel {
   slope: VSpeedPoint[]
   ascents: Ascent[]
   descents: Ascent[]
+  /**
+   * Lift / GPS-artefact climbs (faster than any human ascent), excluded from
+   * `ascents` and the ascent stats. Descents are not capped — humans descend
+   * far faster than they climb (skiing, running downhill).
+   */
+  excludedAscents: Ascent[]
   pauses: Pause[]
   ascentStats: SegmentAggregate
   descentStats: SegmentAggregate
@@ -35,7 +43,10 @@ export interface VSpeedModel {
 /** Compute all vertical-speed series and aggregates once per streams+settings. */
 export function computeVSpeedModel(streams: ActivityStreams, settings: Settings): VSpeedModel {
   const { time, distance } = streams
-  const altitude = streams.altitude ?? []
+  // Despike once at the entry so every derivation (series, slope, segments)
+  // sees GPS-artefact-free altitude; the instant series still median-filters
+  // on top to tame remaining barometric jitter.
+  const altitude = despike(streams.altitude ?? [])
 
   const smoothed = medianFilter(altitude, INSTANT_SMOOTHING)
   const instant = windowedVerticalSpeed(time, distance, smoothed, {
@@ -58,7 +69,12 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
     descentToleranceM: settings.ascentDescentToleranceM,
     pauses,
   }
-  const ascents = detectAscents(time, distance, altitude, segmentOptions)
+  // Split off lift / artefact climbs (faster than human) so the ascent stats
+  // and the green ascent-mean series show real climbing only; the excluded ones
+  // are drawn greyed so the exclusion is visible. Descents are never capped.
+  const { kept: ascents, excluded: excludedAscents } = partitionSegments(
+    detectAscents(time, distance, altitude, segmentOptions),
+  )
   const descents = detectDescents(time, distance, altitude, segmentOptions)
 
   return {
@@ -69,6 +85,7 @@ export function computeVSpeedModel(streams: ActivityStreams, settings: Settings)
     slope,
     ascents,
     descents,
+    excludedAscents,
     pauses,
     ascentStats: aggregateSegments(ascents),
     descentStats: aggregateSegments(descents),
