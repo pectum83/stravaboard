@@ -21,7 +21,7 @@ test('map panel shows the trace with layer options and follows the chart cursor'
   if (await canvas.isVisible()) {
     // Layer switcher present with the keyed options
     const pills = mapArea.locator('.layer-switch button')
-    await expect(pills).toHaveText(['streets', 'satellite', 'terrain'])
+    await expect(pills).toHaveText(['streets', 'topo', 'satellite', 'terrain'])
 
     // Hovering the chart drops a synced cursor marker on the map
     const chart = page.locator('.chart canvas').first()

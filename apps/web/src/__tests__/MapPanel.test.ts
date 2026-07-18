@@ -119,10 +119,14 @@ describe('MapPanel', () => {
   it('offers layer pills with a key and switches styles', async () => {
     const wrapper = mountPanel()
     const pills = wrapper.findAll('.layer-switch button')
-    expect(pills.map((p) => p.text())).toEqual(['streets', 'satellite', 'terrain'])
+    expect(pills.map((p) => p.text())).toEqual(['streets', 'topo', 'satellite', 'terrain'])
 
-    await pills[1]!.trigger('click')
     const map = mocks.state.maps[0]!
+    await pills.find((p) => p.text() === 'topo')!.trigger('click')
+    expect(map.setStyle).toHaveBeenCalledWith(
+      'https://api.maptiler.com/maps/outdoor-v2/style.json?key=k-1',
+    )
+    await pills.find((p) => p.text() === 'satellite')!.trigger('click')
     expect(map.setStyle).toHaveBeenCalledWith(
       'https://api.maptiler.com/maps/hybrid/style.json?key=k-1',
     )
@@ -131,7 +135,8 @@ describe('MapPanel', () => {
   it('enables 3D terrain when the terrain layer loads', async () => {
     const wrapper = mountPanel()
     const map = mocks.state.maps[0]!
-    await wrapper.findAll('.layer-switch button')[2]!.trigger('click')
+    const pills = wrapper.findAll('.layer-switch button')
+    await pills.find((p) => p.text() === 'terrain')!.trigger('click')
     map.fire('style.load')
     expect(map.addSource).toHaveBeenCalledWith(
       'terrain-dem',

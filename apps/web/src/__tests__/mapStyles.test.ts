@@ -9,8 +9,8 @@ import {
 } from '../map/mapStyles'
 
 describe('availableLayers', () => {
-  it('offers satellite and 3D terrain only with a MapTiler key', () => {
-    expect(availableLayers('k')).toEqual(['streets', 'satellite', 'terrain'])
+  it('offers topo, satellite and 3D terrain only with a MapTiler key', () => {
+    expect(availableLayers('k')).toEqual(['streets', 'topo', 'satellite', 'terrain'])
     expect(availableLayers(null)).toEqual(['streets'])
   })
 })
@@ -19,6 +19,10 @@ describe('styleFor', () => {
   it('builds MapTiler style URLs with the key', () => {
     expect(styleFor('streets', 'k-1')).toBe(
       'https://api.maptiler.com/maps/streets-v2/style.json?key=k-1',
+    )
+    // Topo = MapTiler Outdoor: contour lines + hillshade.
+    expect(styleFor('topo', 'k-1')).toBe(
+      'https://api.maptiler.com/maps/outdoor-v2/style.json?key=k-1',
     )
     expect(styleFor('satellite', 'k-1')).toBe(
       'https://api.maptiler.com/maps/hybrid/style.json?key=k-1',

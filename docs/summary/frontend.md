@@ -99,9 +99,11 @@ rounded value}} → null`. **Gotcha: per-datapoint labels only render on
 
 ## Map
 
-- `map/mapStyles.ts` (pure, unit-tested): `availableLayers(key)` (no key →
-  streets only), `styleFor(layer, key)` (MapTiler `streets-v2`/`hybrid` style
-  URLs; no key → inline OSM raster style), `terrainSource(key)`
+- `map/mapStyles.ts` (pure, unit-tested): `MapLayerId` =
+  `streets|topo|satellite|terrain`; `availableLayers(key)` (no key → streets
+  only, else all four), `styleFor(layer, key)` via `MAPTILER_STYLE` lookup
+  (streets/terrain→`streets-v2`, topo→`outdoor-v2` = Outdoor contours+hillshade,
+  satellite→`hybrid`; no key → inline OSM raster style), `terrainSource(key)`
   (terrain-rgb-v2 raster-dem), **`toLngLat` — Strava is `[lat,lng]`, MapLibre
   wants `[lng,lat]`, always swap through this helper**, `boundsOf`,
   `traceGeoJSON`.

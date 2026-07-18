@@ -21,7 +21,8 @@ Ascent/descent means exclude **pauses**: periods where the GPS position stays
 within ~5 m for more than 30 s (threshold configurable) — detected from
 position, not from GPS speed. Whole-activity ascent and descent means are shown
 above the chart. A **map panel** beside the chart shows the activity trace with
-streets / satellite / 3D-terrain layers, and hovering the chart moves a marker
+streets / **topo** (contour lines + hillshade) / satellite / 3D-terrain layers,
+and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
 sport type (all gathered in a collapsible "Filters & sort" section) and
 **sorted** by date, best mean ascent speed, or total elevation gain. The list
@@ -61,8 +62,8 @@ pnpm workspaces monorepo:
   - **Authorization Callback Domain**: `localhost`
   - Note the **Client ID** and **Client Secret**
 - Optional: a free MapTiler key (<https://cloud.maptiler.com/account/keys/>)
-  for the satellite and 3D map layers. Without it the map falls back to plain
-  OpenStreetMap.
+  for the topo (contour), satellite and 3D map layers. Without it the map falls
+  back to plain OpenStreetMap.
 
 ## Setup
 

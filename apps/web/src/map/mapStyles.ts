@@ -5,13 +5,21 @@ import type {
 } from 'maplibre-gl'
 import type { Feature } from 'geojson'
 
-export type MapLayerId = 'streets' | 'satellite' | 'terrain'
+export type MapLayerId = 'streets' | 'topo' | 'satellite' | 'terrain'
 
 const MAPTILER_BASE = 'https://api.maptiler.com'
 
+/** MapTiler hosted style per layer. Terrain reuses streets (relief = the DEM). */
+const MAPTILER_STYLE: Record<MapLayerId, string> = {
+  streets: 'streets-v2',
+  topo: 'outdoor-v2', // contour lines + hillshade + hiking/cycling trails
+  satellite: 'hybrid',
+  terrain: 'streets-v2',
+}
+
 /** Layers offered for the current key; without one only plain OSM works. */
 export function availableLayers(key: string | null): MapLayerId[] {
-  return key === null ? ['streets'] : ['streets', 'satellite', 'terrain']
+  return key === null ? ['streets'] : ['streets', 'topo', 'satellite', 'terrain']
 }
 
 /**
@@ -21,8 +29,7 @@ export function availableLayers(key: string | null): MapLayerId[] {
  */
 export function styleFor(layer: MapLayerId, key: string | null): string | StyleSpecification {
   if (key === null) return osmRasterStyle()
-  const styleId = layer === 'satellite' ? 'hybrid' : 'streets-v2'
-  return `${MAPTILER_BASE}/maps/${styleId}/style.json?key=${key}`
+  return `${MAPTILER_BASE}/maps/${MAPTILER_STYLE[layer]}/style.json?key=${key}`
 }
 
 /** Raster-DEM source powering the 3D terrain layer. */
