@@ -169,7 +169,7 @@ function km(m: number): string {
               {{ formatDate(activity.startDate) }} · {{ activity.sportType }}
             </span>
             <span class="meta">
-              {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.totalElevationGainM) }} m
+              {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.ascentGainM ?? 0) }} m
               <template v-if="activity.ascentMeanVSpeed">
                 · ↑ {{ Math.round(activity.ascentMeanVSpeed) }} m/h
               </template>

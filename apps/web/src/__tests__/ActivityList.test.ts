@@ -17,6 +17,7 @@ function activity(id: number, overrides: Partial<ActivitySummary> = {}): Activit
     totalElevationGainM: 850,
     streamsStatus: 'done',
     ascentMeanVSpeed: 612,
+    ascentGainM: 820,
     ...overrides,
   }
 }
@@ -43,7 +44,7 @@ describe('ActivityList', () => {
     const wrapper = mountList({ activities: [activity(1)] })
     expect(wrapper.text()).toContain('Trail 1')
     expect(wrapper.text()).toContain('12.3 km')
-    expect(wrapper.text()).toContain('D+ 850 m')
+    expect(wrapper.text()).toContain('D+ 820 m') // lift-excluded climbing gain
     expect(wrapper.text()).toContain('↑ 612 m/h')
   })
 

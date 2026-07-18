@@ -2,6 +2,7 @@
  * Seeds a stravaBoard database with fixture activities for e2e tests and
  * local UI work. Usage: SEED_DB_PATH=/tmp/seed.sqlite tsx seed.ts
  */
+import { activityAscentStats } from '@stravaboard/shared'
 import { openDb } from '../apps/server/src/db/client.js'
 import { upsertActivity } from '../apps/server/src/repositories/activities.repo.js'
 import { upsertAthlete } from '../apps/server/src/repositories/athletes.repo.js'
@@ -116,6 +117,8 @@ export function seed(dbPath: string): void {
   for (const f of fixtures) {
     const lastDistance = f.profile?.distance.at(-1) ?? 15_000
     const lastTime = f.profile?.time.at(-1) ?? 3600
+    // Same metrics the sync would compute, so the seeded list looks realistic.
+    const metrics = f.profile ? activityAscentStats(f.profile) : null
     upsertActivity(db, {
       id: f.id,
       athleteId: E2E_ATHLETE_ID,
@@ -127,6 +130,8 @@ export function seed(dbPath: string): void {
       movingTimeS: lastTime,
       elapsedTimeS: lastTime,
       totalElevationGainM: f.gain,
+      ascentMeanVSpeed: metrics?.meanVSpeed ?? null,
+      ascentGainM: metrics?.gainM ?? null,
       streamsStatus: f.profile ? 'done' : 'none',
       rawSummary: '{}',
     })

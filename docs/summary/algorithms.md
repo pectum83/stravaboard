@@ -96,21 +96,26 @@ fixed `MAX_HUMAN_VSPEED`; the **chart** uses the tunable `liftMaxVSpeed` setting
 (default 1400), passed to `partitionSegments` by `computeVSpeedModel`. Excluded
 climbs are kept as `VSpeedModel.excludedAscents` (drawn greyed).
 
-`activityAscentMean(streams) → number|null` — the ranking metric behind the
-list's "Best ascent speed" sort and the 🥇🥈🥉 badges. **Despikes altitude**,
-runs `detectAscents` + `detectPauses` with the FIXED `STANDARD_SEGMENT_PARAMS`
+`activityAscentStats(streams) → {meanVSpeed, gainM}|null` — the two stored
+ranking metrics. **Despikes altitude**, runs `detectAscents` + `detectPauses`
+with the FIXED `STANDARD_SEGMENT_PARAMS`
 (`{minGainM:30, descentToleranceM:10, pauseThresholdS:30}`), then aggregates
 **only `partitionSegments(...).kept`** — deliberately settings-independent so
-rankings stay stable. Returns `null` with no altitude **or when
+rankings stay stable. `meanVSpeed` drives the "Best ascent speed" sort/badge;
+`gainM` (the summed kept-ascent gain, **lifts and sub-30 m bumps excluded**)
+drives the "elevation" sort/badge AND the list's displayed D+, replacing
+Strava's raw `total_elevation_gain`. `activityAscentMean(streams)` is a thin
+wrapper returning just `meanVSpeed`. Returns `null` with no altitude **or when
 time/distance/altitude lengths disagree** (e.g. an altitude stream with a
 missing/partial distance stream — unrankable, never throws), `0` when no ascent
-qualifies (incl. when every ascent was a lift). Persisted to
-`activities.ascentMeanVSpeed`; the sync wraps the call in
-`SyncService.ascentMetric` so a malformed stream set degrades to `0` instead of
-aborting the whole sync. **Changing this algorithm (or `MAX_HUMAN_VSPEED`)
-requires recomputing stored values** — migrations `0004_recompute_metrics` /
-`0005_recompute_lift_cap` (data-and-api.md) NULL every `ascent_mean_vspeed` so
-the next sync's local `computeMissingMetrics` refills them with no API calls.
+qualifies (incl. when every ascent was a lift). Both metrics persist to
+`activities.ascentMeanVSpeed` / `ascentGainM`; the sync wraps the call in
+`SyncService.ascentMetrics` so a malformed stream set degrades to `{0, 0}`
+instead of aborting the whole sync. **Changing this algorithm (or
+`MAX_HUMAN_VSPEED`) requires recomputing stored values** — migrations
+`0004`/`0005`/`0006` (data-and-api.md) NULL `ascent_mean_vspeed` so the next
+sync's local `computeMissingMetrics` refills BOTH columns with no API calls
+(`listMissingMetrics` keys off the NULL speed column).
 
 ## Test fixtures — `packages/shared/src/__tests__/fixtures.ts`
 

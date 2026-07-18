@@ -1,4 +1,4 @@
-import { activityAscentMean, type ActivityStreams, type SyncStatus } from '@stravaboard/shared'
+import { activityAscentStats, type ActivityStreams, type SyncStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
 import {
   countPendingStreams,
@@ -7,7 +7,7 @@ import {
   listMissingMetrics,
   listPendingStreams,
   listStreamsMissingLatlng,
-  setAscentMeanVSpeed,
+  setAscentMetrics,
   setStreamsStatus,
   updateActivityFields,
   upsertActivitySummary,
@@ -270,24 +270,25 @@ export class SyncService {
     }
   }
 
-  /** Persist streams and refresh the derived sort/badge metric together. */
+  /** Persist streams and refresh the derived sort/badge metrics together. */
   private storeStreams(activityId: number, streams: ActivityStreams): void {
     saveStreams(this.db, activityId, streams, new Date(this.nowMs()).toISOString())
-    setAscentMeanVSpeed(this.db, activityId, this.ascentMetric(streams))
+    const { meanVSpeed, gainM } = this.ascentMetrics(streams)
+    setAscentMetrics(this.db, activityId, meanVSpeed, gainM)
   }
 
   /**
-   * The stored sort/badge metric, defensively. `0` means "computed, nothing
-   * rankable" — NULL stays reserved for "not computed yet" (or the backfill
-   * never terminates). A single malformed stream set must never abort a sync,
-   * so any unexpected failure is logged and treated as unrankable.
+   * The stored sort/badge metrics (mean ascent speed + lift-excluded gain),
+   * defensively. `0` means "computed, nothing rankable" — NULL stays reserved
+   * for "not computed yet". A single malformed stream set must never abort a
+   * sync, so any unexpected failure is logged and treated as unrankable.
    */
-  private ascentMetric(streams: ActivityStreams): number {
+  private ascentMetrics(streams: ActivityStreams): { meanVSpeed: number; gainM: number } {
     try {
-      return activityAscentMean(streams) ?? 0
+      return activityAscentStats(streams) ?? { meanVSpeed: 0, gainM: 0 }
     } catch (err) {
       this.log(`ascent metric skipped: ${err instanceof Error ? err.message : String(err)}`)
-      return 0
+      return { meanVSpeed: 0, gainM: 0 }
     }
   }
 
@@ -302,7 +303,10 @@ export class SyncService {
       this.log(`computing ascent metrics for ${ids.length} activities`)
       for (const id of ids) {
         const streams = getStreams(this.db, id)
-        setAscentMeanVSpeed(this.db, id, streams ? this.ascentMetric(streams) : 0)
+        const { meanVSpeed, gainM } = streams
+          ? this.ascentMetrics(streams)
+          : { meanVSpeed: 0, gainM: 0 }
+        setAscentMetrics(this.db, id, meanVSpeed, gainM)
       }
     }
   }

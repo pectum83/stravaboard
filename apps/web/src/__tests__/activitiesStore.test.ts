@@ -26,6 +26,7 @@ function summary(id: number, overrides: Partial<ActivitySummary> = {}): Activity
     totalElevationGainM: 500,
     streamsStatus: 'done',
     ascentMeanVSpeed: 600,
+    ascentGainM: 480,
     ...overrides,
   }
 }

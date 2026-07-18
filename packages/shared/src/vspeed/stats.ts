@@ -59,7 +59,22 @@ export function partitionSegments(
  * parameters. Returns null when the activity has no altitude data, 0 when it
  * has altitude but no qualifying ascent.
  */
-export function activityAscentMean(streams: ActivityStreams): number | null {
+/** The stored per-activity ascent metrics. */
+export interface AscentMetrics {
+  /** Mean ascent speed (m/h), 0 when no ascent qualifies. */
+  meanVSpeed: number
+  /** Total climbing gain (m) over the kept ascents, lift/artefact climbs excluded. */
+  gainM: number
+}
+
+/**
+ * The stored ascent metrics (mean speed + lift-excluded climbing gain) with the
+ * standard parameters. Despikes GPS altitude spikes, detects ascents, drops
+ * lift/artefact-fast segments, and aggregates the rest. Returns `null` when the
+ * activity has no altitude data or the streams don't line up (unrankable); both
+ * metrics are `0` when altitude exists but no human ascent qualifies.
+ */
+export function activityAscentStats(streams: ActivityStreams): AscentMetrics | null {
   const rawAltitude = streams.altitude
   if (rawAltitude === null || rawAltitude.length === 0) return null
   // Segmentation needs time/distance/altitude to line up. Some activities carry
@@ -71,8 +86,6 @@ export function activityAscentMean(streams: ActivityStreams): number | null {
   ) {
     return null
   }
-  // Remove GPS altitude spikes first, then drop lift/artefact-fast segments, so
-  // the stored ranking reflects real human climbing only.
   const altitude = despike(rawAltitude)
   const pauses = detectPauses(streams.time, streams.latlng, streams.distance, {
     thresholdS: STANDARD_SEGMENT_PARAMS.pauseThresholdS,
@@ -82,7 +95,16 @@ export function activityAscentMean(streams: ActivityStreams): number | null {
     descentToleranceM: STANDARD_SEGMENT_PARAMS.descentToleranceM,
     pauses,
   })
-  return aggregateSegments(partitionSegments(ascents).kept).meanVSpeed ?? 0
+  const agg = aggregateSegments(partitionSegments(ascents).kept)
+  return { meanVSpeed: agg.meanVSpeed ?? 0, gainM: agg.totalGainM }
+}
+
+/**
+ * Whole-activity mean ascent speed (m/h) — the ranking metric behind the "Best
+ * ascent speed" sort and badges. Thin wrapper over `activityAscentStats`.
+ */
+export function activityAscentMean(streams: ActivityStreams): number | null {
+  return activityAscentStats(streams)?.meanVSpeed ?? null
 }
 
 /** Aggregate segments into a whole-activity mean: Σ gain / Σ effective time. */

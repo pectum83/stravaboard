@@ -69,9 +69,9 @@ describe('activities API', () => {
 
   it('sorts by ascent speed and elevation with paging cursors', async () => {
     const db = testDb()
-    upsertActivity(db, activity(1, 1000, { ascentMeanVSpeed: 500, totalElevationGainM: 100 }))
-    upsertActivity(db, activity(2, 2000, { ascentMeanVSpeed: 900, totalElevationGainM: 50 }))
-    upsertActivity(db, activity(3, 3000, { ascentMeanVSpeed: null, totalElevationGainM: 800 }))
+    upsertActivity(db, activity(1, 1000, { ascentMeanVSpeed: 500, ascentGainM: 100 }))
+    upsertActivity(db, activity(2, 2000, { ascentMeanVSpeed: 900, ascentGainM: 50 }))
+    upsertActivity(db, activity(3, 3000, { ascentMeanVSpeed: null, ascentGainM: 800 }))
     const { app, cookies } = await appWithAthlete(db)
 
     const speed = await app.inject({
@@ -112,10 +112,7 @@ describe('activities API', () => {
       [4, 700, 200],
       [5, 600, 300],
     ] as const) {
-      upsertActivity(
-        db,
-        activity(id, id * 1000, { ascentMeanVSpeed: vspeed, totalElevationGainM: gain }),
-      )
+      upsertActivity(db, activity(id, id * 1000, { ascentMeanVSpeed: vspeed, ascentGainM: gain }))
     }
     const { app, cookies } = await appWithAthlete(db)
     const res = await app.inject({ method: 'GET', url: '/api/activities/badges', cookies })

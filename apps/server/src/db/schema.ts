@@ -41,6 +41,13 @@ export const activities = sqliteTable(
      * 0 = computed, no qualifying ascent.
      */
     ascentMeanVSpeed: real('ascent_mean_vspeed'),
+    /**
+     * Total climbing gain (m) over the kept ascent segments — lift/artefact
+     * climbs and sub-threshold bumps excluded (standard segment parameters).
+     * Drives the "elevation" sort/badge and the list's D+, instead of Strava's
+     * raw total_elevation_gain. NULL = not computed yet; 0 = no qualifying ascent.
+     */
+    ascentGainM: real('ascent_gain_m'),
     /** Full Strava summary payload (JSON) so future features need no re-sync. */
     rawSummary: text('raw_summary').notNull(),
   },

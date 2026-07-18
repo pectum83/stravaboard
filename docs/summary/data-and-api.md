@@ -34,6 +34,10 @@ applied automatically by `openDb`).
   so rankings are settings-independent; NULL = not computed yet, 0 = no
   qualifying ascent; index `idx_activities_athlete_vspeed` on
   (athlete_id, ascent_mean_vspeed) drives the ranked sort),
+  **ascentGainM** (real, nullable — lift-excluded climbing gain m: Σ of the kept
+  ascent segments with FIXED params, lifts/artefacts + sub-30 m bumps removed;
+  drives the `elevation` sort/badge and the list's D+, NOT Strava's raw
+  total_elevation_gain; NULL = not computed, 0 = no qualifying ascent),
   streamsStatus `'pending'|'done'|'none'`, rawSummary (full Strava JSON kept verbatim).
 - `activity_streams`: activityId (PK, FK), time / distance (JSON number[] text),
   altitude (JSON or NULL), **latlng** (JSON `[lat,lng][]`; **SQL NULL = not
@@ -58,6 +62,9 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
 - Migration `0005_recompute_lift_cap.sql` (same NULL-reset pattern) recomputes
   after `MAX_HUMAN_VSPEED` dropped 2000 → 1400 (to catch slow ~1450 m/h resort
   lifts). Same "sync after deploying" caveat.
+- Migration `0006_activity_ascent_gain.sql` (drizzle-generated for the ADD
+  COLUMN, hand-appended NULL-reset) adds `ascent_gain_m` and nulls
+  `ascent_mean_vspeed` so the next sync computes BOTH metrics. Same caveat.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 
@@ -69,10 +76,13 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   cursor** `{value, id}` (`sortValueExpr` COALESCEs the metric to `METRIC_NULL
 = -1`, orders `value DESC, id DESC`; WHERE `value < c.value OR (value =
 c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
-  `parseCursor(str)`. `topByAscentSpeed`/`topByElevation` (metric/elevation > 0,
-  top-N ids for badges, take an optional `ActivityFilter` so badges match the
-  visible list); `setAscentMeanVSpeed`, `listMissingMetrics` (rows with
-  streams but NULL metric, for local backfill). Filter predicates are shared by
+  `parseCursor(str)`. The `elevation` sort/`topByElevation` rank by
+  `ascentGainM` (lift-excluded), NOT `totalElevationGainM`; `ascentSpeed` by
+  `ascentMeanVSpeed`. `topByAscentSpeed`/`topByElevation` (metric > 0, top-N ids
+  for badges, take an optional `ActivityFilter` so badges match the visible
+  list); `setAscentMetrics(db, id, meanVSpeed, gainM)` writes both columns,
+  `listMissingMetrics` (rows with streams but NULL speed metric, for local
+  backfill of both). Filter predicates are shared by
   the list and the rankings via `filterConditions(filter)`. `listSportTypes`
   (distinct, sorted, **only analyzable types**: ≥1 activity with
   `totalElevationGainM > 0`), `listPendingStreams`/`count…`,
@@ -108,8 +118,8 @@ c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
   Invalid query or malformed cursor → 400.
 - `GET /activities/badges?q&from&to&sportType` → `ActivityBadges
 {ascentSpeed:number[], elevation:number[]}` — top-3 activity ids per ranking
-  (metric/elevation > 0) **within the same filter as the list**, so a filtered
-  view badges its own best. For the 🥇🥈🥉 medals in the list.
+  (ascentMeanVSpeed / ascentGainM > 0) **within the same filter as the list**,
+  so a filtered view badges its own best. For the 🥇🥈🥉 medals in the list.
 - `GET /activities/sport-types` → `string[]` distinct sorted, **only analyzable
   types** (≥1 activity with `totalElevationGainM > 0`); indoor/flat types
   (trainer, weights, pool) never clutter the filter.

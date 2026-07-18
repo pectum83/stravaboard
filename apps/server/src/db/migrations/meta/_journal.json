@@ -43,6 +43,13 @@
       "when": 1784600000000,
       "tag": "0005_recompute_lift_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784381698241,
+      "tag": "0006_activity_ascent_gain",
+      "breakpoints": true
     }
   ]
 }

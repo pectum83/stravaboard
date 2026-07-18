@@ -151,10 +151,11 @@ describe('SyncService', () => {
     await runSync(again.sync)
     // 120 m gain over 600 s = 720 m/h (human), computed locally without API calls.
     expect(getActivity(db, 300)?.ascentMeanVSpeed).toBeCloseTo(720, 4)
+    expect(getActivity(db, 300)?.ascentGainM).toBeCloseTo(120, 4)
     expect(again.stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
   })
 
-  it('excludes a lift/artefact-fast climb from the stored metric', async () => {
+  it('excludes lift/artefact-fast climbs from the stored speed AND gain metrics', async () => {
     const db = connectedDb()
     upsertActivity(db, { ...makeRow(400, '2025-02-01T08:00:00Z'), streamsStatus: 'done' })
     const time = [],
@@ -169,8 +170,9 @@ describe('SyncService', () => {
 
     const { sync } = makeSync(db, { activities: [] })
     await runSync(sync)
-    // The lift is dropped, leaving no rankable ascent → 0 (computed, unrankable).
+    // The lift is dropped from both metrics: no rankable ascent, no climbing gain.
     expect(getActivity(db, 400)?.ascentMeanVSpeed).toBe(0)
+    expect(getActivity(db, 400)?.ascentGainM).toBe(0)
   })
 
   it('marks activities without streams as none and keeps going', async () => {

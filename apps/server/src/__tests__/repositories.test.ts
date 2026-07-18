@@ -196,7 +196,7 @@ describe('streams repo', () => {
 
 describe('sorting and badges', () => {
   const withMetric = (id: number, epoch: number, vspeed: number | null, gain: number) =>
-    activity(id, epoch, { ascentMeanVSpeed: vspeed, totalElevationGainM: gain })
+    activity(id, epoch, { ascentMeanVSpeed: vspeed, ascentGainM: gain })
 
   it('sorts by stored ascent speed with NULL metrics last and a working cursor', () => {
     const db = testDb()

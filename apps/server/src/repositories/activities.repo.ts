@@ -8,6 +8,8 @@ export interface ActivityRow {
   /** Owner (Strava athlete id). */
   athleteId: number
   ascentMeanVSpeed?: number | null
+  /** Lift-excluded climbing gain (m); NULL = not computed yet, 0 = no ascent. */
+  ascentGainM?: number | null
   name: string
   sportType: string
   startDate: string
@@ -74,7 +76,7 @@ function sortValueExpr(sort: ActivitySort) {
     case 'ascentSpeed':
       return sql<number>`COALESCE(${activities.ascentMeanVSpeed}, ${METRIC_NULL})`
     case 'elevation':
-      return sql<number>`${activities.totalElevationGainM}`
+      return sql<number>`COALESCE(${activities.ascentGainM}, ${METRIC_NULL})`
   }
 }
 
@@ -84,7 +86,7 @@ export function cursorFor(sort: ActivitySort, row: ActivityRow): string {
     sort === 'date'
       ? row.startDateEpoch
       : sort === 'elevation'
-        ? row.totalElevationGainM
+        ? (row.ascentGainM ?? METRIC_NULL)
         : (row.ascentMeanVSpeed ?? METRIC_NULL)
   return `${value}:${row.id}`
 }
@@ -160,7 +162,7 @@ export function topByAscentSpeed(
     .map((r) => r.id)
 }
 
-/** Top activity ids by total elevation gain (positive only), within `filter`. */
+/** Top activity ids by lift-excluded climbing gain (positive only), within `filter`. */
 export function topByElevation(
   db: Db,
   athleteId: number,
@@ -173,11 +175,11 @@ export function topByElevation(
     .where(
       and(
         eq(activities.athleteId, athleteId),
-        sql`${activities.totalElevationGainM} > 0`,
+        sql`${activities.ascentGainM} > 0`,
         ...filterConditions(filter),
       ),
     )
-    .orderBy(desc(activities.totalElevationGainM), desc(activities.id))
+    .orderBy(desc(activities.ascentGainM), desc(activities.id))
     .limit(count)
     .all()
     .map((r) => r.id)
@@ -196,9 +198,17 @@ export function updateActivityFields(
   db.update(activities).set(fields).where(eq(activities.id, id)).run()
 }
 
-/** Store the computed sort/badge metric for one activity. */
-export function setAscentMeanVSpeed(db: Db, id: number, value: number | null): void {
-  db.update(activities).set({ ascentMeanVSpeed: value }).where(eq(activities.id, id)).run()
+/** Store the computed sort/badge metrics (mean ascent speed + climbing gain). */
+export function setAscentMetrics(
+  db: Db,
+  id: number,
+  meanVSpeed: number | null,
+  gainM: number | null,
+): void {
+  db.update(activities)
+    .set({ ascentMeanVSpeed: meanVSpeed, ascentGainM: gainM })
+    .where(eq(activities.id, id))
+    .run()
 }
 
 /**
@@ -325,6 +335,7 @@ export function toSummary(row: ActivityRow): ActivitySummary {
   return {
     id: row.id,
     ascentMeanVSpeed: row.ascentMeanVSpeed ?? null,
+    ascentGainM: row.ascentGainM ?? null,
     name: row.name,
     sportType: row.sportType,
     startDate: row.startDate,

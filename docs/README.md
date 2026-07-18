@@ -34,11 +34,14 @@ streets / **topo** (contour lines + hillshade) / satellite / 3D-terrain layers,
 and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
 sport type (all gathered in a collapsible "Filters & sort" section) and
-**sorted** by date, best mean ascent speed, or total elevation gain. The list
+**sorted** by date, best mean ascent speed, or climbing gain. The list
 opens on **Hike** by default when you have any hikes. The three best activities
 in each ranking get 🥇🥈🥉 **badges** — computed within the current filter, so a
 filtered view badges its own best — and the mean ascent speed is shown on every
-activity. The sport-type filter lists only **analyzable** sports (those with
+activity. The **D+** and the climbing-gain ranking count only the real climbing
+you did (the same lift/artefact-excluded ascents as above), so a day with a lift
+ranks on what you skinned, not what the lift gave you — this can read lower than
+Strava's total elevation gain. The sport-type filter lists only **analyzable** sports (those with
 elevation data), so indoor/flat activity types don't clutter it. A
 **"↻ Reload from Strava"** button
 re-fetches the selected activity (data and streams) — use it after cropping or

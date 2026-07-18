@@ -126,7 +126,8 @@ maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
 ## Other components (presentational)
 
 - `ActivityList.vue` — props activities/selectedId/hasMore/loading/**badges**,
-  emits select/loadMore. Shows `↑ <n> m/h` (ascentMeanVSpeed) in the meta line
+  emits select/loadMore. Shows `D+ <n> m` (`ascentGainM`, lift-excluded — not
+  Strava's raw total) and `↑ <n> m/h` (ascentMeanVSpeed) in the meta line
   and 🥇🥈🥉 medals before the name via `badgeMap` (id → medals, with a `#N
 <ranking>` title). Empty text: "No activities yet.". **Inline edit**: a per-row
   `.edit-toggle` pencil (revealed on row hover or when the row is selected —

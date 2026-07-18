@@ -16,6 +16,12 @@ export interface ActivitySummary {
    * activity has no altitude data; 0 when it has no qualifying ascent.
    */
   ascentMeanVSpeed: number | null
+  /**
+   * Lift-excluded climbing gain (m): the sum of the kept ascent segments
+   * (standard parameters, lifts/artefacts removed) — drives the "elevation"
+   * sort/badge and the displayed D+. null until computed; 0 when no ascent.
+   */
+  ascentGainM: number | null
 }
 
 export type StreamsStatus = 'pending' | 'done' | 'none'

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Ascent } from '../vspeed/ascents.js'
 import {
   activityAscentMean,
+  activityAscentStats,
   aggregateSegments,
   MAX_HUMAN_VSPEED,
   partitionSegments,
@@ -95,6 +96,28 @@ describe('activityAscentMean (standard parameters)', () => {
     // Any other length disagreement is skipped rather than throwing.
     expect(
       activityAscentMean({ ...climb, distance: climb.distance.slice(0, -1), latlng: null }),
+    ).toBeNull()
+  })
+})
+
+describe('activityAscentStats (mean speed + lift-excluded gain)', () => {
+  it('reports the climbing gain of the kept ascents', () => {
+    // 200 m gained over 1000 s at a human 720 m/h.
+    const stats = activityAscentStats({ ...ramp(1000, 6, 0.2), latlng: null })
+    expect(stats).not.toBeNull()
+    expect(stats!.meanVSpeed).toBeCloseTo(720, 4)
+    expect(stats!.gainM).toBeCloseTo(200, 4)
+  })
+
+  it('excludes lift gain from the climbing total', () => {
+    // 3240 m/h lift over 540 m — excluded, so both metrics are 0.
+    const stats = activityAscentStats({ ...ramp(600, 6, 0.9), latlng: null })
+    expect(stats).toEqual({ meanVSpeed: 0, gainM: 0 })
+  })
+
+  it('is null without altitude', () => {
+    expect(
+      activityAscentStats({ time: [0, 1], distance: [0, 1], altitude: null, latlng: null }),
     ).toBeNull()
   })
 })
