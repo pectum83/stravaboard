@@ -428,6 +428,46 @@ describe('activities API', () => {
       expect(getActivity(db, 101)?.sportType).toBe('Hike')
     })
 
+    it('changes name and sport type together in a single Strava call', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000, { name: 'Old name', sportType: 'Run' }))
+      const { app, cookies, requests } = await editApp(db, {
+        activities: [makeActivity(101, start, { name: 'Old name', sport_type: 'Run' })],
+      })
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { name: 'New name', sportType: 'Hike' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ id: 101, name: 'New name', sportType: 'Hike' })
+      expect(getActivity(db, 101)).toMatchObject({ name: 'New name', sportType: 'Hike' })
+      expect(requests.filter((r) => r === '/api/v3/activities/101')).toHaveLength(1)
+    })
+
+    it('re-sends the sport type when Strava drops it from a combined update', async () => {
+      const db = testDb()
+      upsertActivity(db, activity(101, 1000, { name: 'Old name', sportType: 'Run' }))
+      const { app, cookies, requests } = await editApp(db, {
+        activities: [makeActivity(101, start, { name: 'Old name', sport_type: 'Run' })],
+        dropSportTypeUpdateCount: 1,
+      })
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/activities/101',
+        cookies,
+        payload: { name: 'New name', sportType: 'Hike' },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ id: 101, name: 'New name', sportType: 'Hike' })
+      expect(getActivity(db, 101)).toMatchObject({ name: 'New name', sportType: 'Hike' })
+      // The first PUT lost sport_type; a second, sport-type-only PUT fixed it.
+      expect(requests.filter((r) => r === '/api/v3/activities/101')).toHaveLength(2)
+    })
+
     it('rejects an empty body', async () => {
       const db = testDb()
       upsertActivity(db, activity(101, 1000))

@@ -151,10 +151,19 @@ export class SyncService {
   ): Promise<ActivityRow> {
     const existing = getActivity(this.db, id)
     if (!existing) throw new NotFoundError()
-    const updated = await this.client.updateActivity(existing.athleteId, id, {
+    let updated = await this.client.updateActivity(existing.athleteId, id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.sportType !== undefined ? { sport_type: patch.sportType } : {}),
     })
+    // Strava's UpdateActivity is unreliable for sport_type when other fields
+    // ride along in the same PUT (applied late or not at all, and the response
+    // can echo the stale value). One sport-type-only retry covers both cases —
+    // it is a harmless no-op when the first call did apply it.
+    if (patch.sportType !== undefined && updated.sport_type !== patch.sportType) {
+      updated = await this.client.updateActivity(existing.athleteId, id, {
+        sport_type: patch.sportType,
+      })
+    }
     // Trust Strava's canonical response for the stored values.
     updateActivityFields(this.db, id, { name: updated.name, sportType: updated.sport_type })
     return getActivity(this.db, id)!

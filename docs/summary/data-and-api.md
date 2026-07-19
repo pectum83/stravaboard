@@ -180,7 +180,10 @@ totalAscentGainM}` — whole-filter totals (all matches, not just the page) for
 sportType?: enum STRAVA_SPORT_TYPES}`, at least one field (else 400).
   `SyncService.editActivity` calls `StravaClient.updateActivity` then mirrors
   Strava's canonical response into the local row's name/sportType
-  (`updateActivityFields`; streams/metrics untouched). 200 `ActivitySummary`;
+  (`updateActivityFields`; streams/metrics untouched). **Strava quirk: a PUT
+  combining name + sport_type can drop/stale the sport_type — when the response
+  doesn't echo the requested sport type, editActivity retries once with a
+  sport-type-only PUT** (no-op if the first call did apply it). 200 `ActivitySummary`;
   404 unknown/not owned; 429 `resumeAt`; **403 when Strava rejects for a
   missing `activity:write` scope → "reconnect your Strava account"**.
 - `GET /activities/:id/streams` → `ActivityStreams` (shared type:

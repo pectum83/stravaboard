@@ -10,6 +10,11 @@ export interface StravaStubOptions {
   rateLimit429Count?: number
   /** HTTP status returned by the UpdateActivity (PUT) endpoint instead of 200. */
   updateStatus?: number
+  /**
+   * Ignore `sport_type` in this many UpdateActivity (PUT) requests, mimicking
+   * Strava's flaky sport-type handling on combined updates.
+   */
+  dropSportTypeUpdateCount?: number
   /** Athlete returned by the token endpoint (OAuth code exchange / refresh). */
   athlete?: { id: number; firstname?: string; lastname?: string }
 }
@@ -56,6 +61,7 @@ export function stravaStub(opts: StravaStubOptions = {}) {
   )
   const requests: string[] = []
   let remaining429 = opts.rateLimit429Count ?? 0
+  let remainingDroppedSportTypes = opts.dropSportTypeUpdateCount ?? 0
 
   const fetchImpl: FetchLike = async (input, init) => {
     const url = new URL(String(input))
@@ -92,7 +98,12 @@ export function stravaStub(opts: StravaStubOptions = {}) {
       if (init?.method === 'PUT') {
         if (opts.updateStatus) return new Response('error', { status: opts.updateStatus })
         if (!activity) return new Response('not found', { status: 404 })
-        Object.assign(activity, JSON.parse(String(init.body ?? '{}')))
+        const body = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>
+        if ('sport_type' in body && remainingDroppedSportTypes > 0) {
+          remainingDroppedSportTypes--
+          delete body.sport_type
+        }
+        Object.assign(activity, body)
         return Response.json(activity)
       }
       return activity ? Response.json(activity) : new Response('not found', { status: 404 })
