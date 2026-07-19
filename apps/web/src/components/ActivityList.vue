@@ -93,8 +93,8 @@ async function saveEdit(activity: ActivitySummary): Promise<void> {
 
 /**
  * Per activity id: the medals it holds, each tagged with its ranking's icon
- * (⚡ ascent speed, ⬆️ elevation) so the two podiums are told apart at a
- * glance, plus a human title for the tooltip.
+ * (⚡ ascent speed, ⬆️ elevation, 💪 effort) so the podiums are told apart at
+ * a glance, plus a human title for the tooltip.
  */
 const badgeMap = computed(() => {
   const map = new Map<number, { medal: string; icon: string; title: string }[]>()
@@ -107,6 +107,7 @@ const badgeMap = computed(() => {
   }
   add(props.badges.ascentSpeed, '⚡', 'ascent speed')
   add(props.badges.elevation, '⬆️', 'elevation')
+  add(props.badges.effort, '💪', 'effort')
   return map
 })
 

@@ -17,7 +17,7 @@ export interface ActivityFilters {
 
 export const EMPTY_FILTERS: ActivityFilters = { q: '', from: '', to: '', sportType: '' }
 
-const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [] }
+const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [], effort: [] }
 
 const NO_AGGREGATE: ActivityAggregate = { count: 0, totalAscentGainM: 0 }
 

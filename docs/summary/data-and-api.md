@@ -106,7 +106,13 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   `ascentGainM` (lift-excluded), NOT `totalElevationGainM`; `ascentSpeed` by
   `ascentMeanVSpeed`; `descent` by `descentLossM` (no badge). `topByAscentSpeed`/
   `topByElevation` (metric > 0, top-N ids for badges, take an optional
-  `ActivityFilter` so badges match the visible list); `aggregateActivities(db,
+  `ActivityFilter` so badges match the visible list); `topByEffort` ranks the
+  derived km-effort score `distanceKm + (D+ / 100) × (Vspeed / 400)`
+  (`effortExpr`, no stored column: classic 100 m ↑ = 1 km flat equivalence,
+  climb term weighted linearly by mean ascent speed vs a 400 m/h reference —
+  the t × I² training-load model; only rows with computed metrics and a
+  positive score qualify, flat activities rank via distance);
+  `aggregateActivities(db,
 athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
   list header — `SUM(COALESCE(ascent_gain_m,0))`);
   `setActivityMetrics(db, id, meanVSpeed, gainM, descentLossM)` writes all three
@@ -154,8 +160,9 @@ athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
 totalAscentGainM}` — whole-filter totals (all matches, not just the page) for
   the list header; same filter schema as the list/badges. Invalid query → 400.
 - `GET /activities/badges?q&from&to&sportType` → `ActivityBadges
-{ascentSpeed:number[], elevation:number[]}` — top-3 activity ids per ranking
-  (ascentMeanVSpeed / ascentGainM > 0) **within the same filter as the list**,
+{ascentSpeed:number[], elevation:number[], effort:number[]}` — top-3 activity
+  ids per ranking (ascentMeanVSpeed / ascentGainM > 0; effort = the
+  `topByEffort` km-effort score) **within the same filter as the list**,
   so a filtered view badges its own best. For the 🥇🥈🥉 medals in the list.
 - `GET /activities/sport-types` → `string[]` distinct sorted, **only analyzable
   types** (≥1 activity with `totalElevationGainM > 0`); indoor/flat types

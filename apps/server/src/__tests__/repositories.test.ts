@@ -13,6 +13,7 @@ import {
   parseCursor,
   setStreamsStatus,
   topByAscentSpeed,
+  topByEffort,
   topByElevation,
   upsertActivity,
   type ActivityRow,
@@ -285,6 +286,37 @@ describe('sorting and badges', () => {
     expect(topByAscentSpeed(db, 1, 3)).toEqual([4, 2, 3])
     expect(topByAscentSpeed(db, 1, 3, { sportType: 'Hike' })).toEqual([2, 3])
     expect(topByElevation(db, 1, 3, { sportType: 'Hike' })).toEqual([3, 2])
+  })
+
+  it('ranks effort as distanceKm + (D+ / 100) × (Vspeed / 400)', () => {
+    const db = testDb()
+    // Flat long walk: 30 + 0 = 30 km-effort — the distance term alone ranks it.
+    upsertActivity(
+      db,
+      activity(1, 1000, {
+        distanceM: 30_000,
+        ascentMeanVSpeed: 0,
+        ascentGainM: 0,
+        sportType: 'Walk',
+      }),
+    )
+    // Fast big climb: 10 + (1000/100)×(500/400) = 22.5.
+    upsertActivity(
+      db,
+      activity(2, 2000, { distanceM: 10_000, ascentMeanVSpeed: 500, ascentGainM: 1000 }),
+    )
+    // Same climb done slowly: 10 + (1000/100)×(200/400) = 15.
+    upsertActivity(
+      db,
+      activity(3, 3000, { distanceM: 10_000, ascentMeanVSpeed: 200, ascentGainM: 1000 }),
+    )
+    // Metrics not computed yet → not eligible, despite the huge distance.
+    upsertActivity(db, activity(4, 4000, { distanceM: 50_000 }))
+    // Another athlete never ranks.
+    upsertActivity(db, activity(5, 5000, { athleteId: 2, distanceM: 99_000, ascentGainM: 0 }))
+
+    expect(topByEffort(db, 1, 3)).toEqual([1, 2, 3])
+    expect(topByEffort(db, 1, 3, { sportType: 'Run' })).toEqual([2, 3])
   })
 
   it('round-trips cursors through cursorFor/parseCursor', () => {

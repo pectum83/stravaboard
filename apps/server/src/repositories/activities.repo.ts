@@ -168,6 +168,50 @@ export function topByAscentSpeed(
     .map((r) => r.id)
 }
 
+/**
+ * Effort score in km-effort (equivalent flat kilometres):
+ *
+ *   distanceKm + (D+ / 100) × (Vspeed / 400)
+ *
+ * Base is the classic mountaineering equivalence (100 m of climb ≈ 1 km on the
+ * flat, both in energy and in Swiss-rule time at 4 km/h / 400 m/h), so a long
+ * flat walk scores its full distance. The climb part is then weighted by the
+ * mean ascent speed relative to the 400 m/h reference: physiological load ≈
+ * duration × intensity² (TRIMP/TSS model), and with climb duration D+/Vspeed
+ * and intensity Vspeed/400 that collapses to a linear Vspeed/400 factor. At
+ * exactly 400 m/h the formula degrades to the plain km-effort rule.
+ */
+const effortExpr = sql<number>`(${activities.distanceM} / 1000.0) + (${activities.ascentGainM} * COALESCE(${activities.ascentMeanVSpeed}, 0)) / 40000.0`
+
+/**
+ * Top activity ids by effort score (see `effortExpr`), within `filter`. Only
+ * activities whose metrics are computed rank (a pending row would rank on
+ * distance alone, then jump once its climb is known); flat activities qualify
+ * through their distance term.
+ */
+export function topByEffort(
+  db: Db,
+  athleteId: number,
+  count: number,
+  filter: ActivityFilter = {},
+): number[] {
+  return db
+    .select({ id: activities.id })
+    .from(activities)
+    .where(
+      and(
+        eq(activities.athleteId, athleteId),
+        sql`${activities.ascentGainM} IS NOT NULL`,
+        sql`${effortExpr} > 0`,
+        ...filterConditions(filter),
+      ),
+    )
+    .orderBy(sql`${effortExpr} DESC`, desc(activities.id))
+    .limit(count)
+    .all()
+    .map((r) => r.id)
+}
+
 /** Top activity ids by lift-excluded climbing gain (positive only), within `filter`. */
 export function topByElevation(
   db: Db,

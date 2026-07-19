@@ -154,7 +154,7 @@ maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
   `· ↑ <n> m/h` (ascentMeanVSpeed when present) — plus 🥇🥈🥉 medals before the
   name via `badgeMap` (id → medals, with a `#N <ranking>` title); each medal
   carries a raised `.medal-kind` icon naming its ranking (⚡ ascent speed,
-  ⬆️ elevation). Empty text:
+  ⬆️ elevation, 💪 effort — the server's km-effort score). Empty text:
   "No activities yet.". **Inline edit**: a per-row
   `.edit-toggle` pencil (revealed on row hover or when the row is selected —
   works on touch via selection) swaps the row for a `form.edit` (name input +

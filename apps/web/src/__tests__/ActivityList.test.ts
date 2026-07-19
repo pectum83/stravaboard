@@ -23,7 +23,7 @@ function activity(id: number, overrides: Partial<ActivitySummary> = {}): Activit
   }
 }
 
-const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [] }
+const NO_BADGES: ActivityBadges = { ascentSpeed: [], elevation: [], effort: [] }
 
 type ListProps = InstanceType<typeof ActivityList>['$props']
 
@@ -82,19 +82,19 @@ describe('ActivityList', () => {
     expect(items[1]!.text()).toContain('no elevation data')
   })
 
-  it('decorates the top-3 activities with medals for both rankings', () => {
+  it('decorates the top-3 activities with medals for each ranking', () => {
     const wrapper = mountList({
       activities: [activity(1), activity(2), activity(3)],
-      badges: { ascentSpeed: [2, 1], elevation: [1] },
+      badges: { ascentSpeed: [2, 1], elevation: [1], effort: [3] },
     })
     const items = wrapper.findAll('button.item')
     // Activity 1 is #2 ascent speed AND #1 elevation → two medals, each
-    // tagged with its ranking's icon (⚡ ascent speed, ⬆️ elevation).
+    // tagged with its ranking's icon (⚡ ascent speed, ⬆️ elevation, 💪 effort).
     expect(items[0]!.find('.medals').text()).toBe('🥈⚡🥇⬆️')
     // Activity 2 is #1 ascent speed → one gold.
     expect(items[1]!.find('.medals').text()).toBe('🥇⚡')
-    // Activity 3 has no badge.
-    expect(items[2]!.find('.medals').exists()).toBe(false)
+    // Activity 3 is #1 effort.
+    expect(items[2]!.find('.medals').text()).toBe('🥇💪')
   })
 
   it('shows a load-more button only when more pages exist', async () => {

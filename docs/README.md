@@ -53,10 +53,15 @@ treks, where you descend far more than you climb; when sorted this way each row
 shows its D−). Just above the list, a line totals the **number of activities**
 in the current filter and their **cumulated D+**. The list
 opens on **Hike** by default when you have any hikes. The three best activities
-in each ranking get 🥇🥈🥉 **badges**, tagged ⚡ for the ascent-speed podium and
-⬆️ for the climbing-gain one — computed within the current filter, so a
-filtered view badges its own best — and the mean ascent speed is shown on every
-activity. The **D+** and the climbing-gain ranking count only the real climbing
+in each ranking get 🥇🥈🥉 **badges**, tagged ⚡ for the ascent-speed podium,
+⬆️ for the climbing-gain one and 💪 for **effort** — a combined score in
+"km-effort" (equivalent flat kilometres): `distance (km) + D+/100 × Vspeed/400`.
+The base is the classic mountaineering equivalence (100 m of climb ≈ 1 km on
+the flat), so a long flat walk earns its full distance; the climb part is then
+scaled by your mean ascent speed against a 400 m/h reference, so the same
+1000 m D+ counts more when climbed fast. Badges are computed within the
+current filter, so a filtered view badges its own best, and the mean ascent
+speed is shown on every activity. The **D+** and the climbing-gain ranking count only the real climbing
 you did (the same lift/artefact-excluded ascents as above), so a day with a lift
 ranks on what you skinned, not what the lift gave you — this can read lower than
 Strava's total elevation gain. The sport-type filter lists only **analyzable** sports (those with

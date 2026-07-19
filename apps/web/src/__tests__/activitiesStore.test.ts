@@ -38,7 +38,7 @@ describe('activities store', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     vi.mocked(api.sportTypes).mockResolvedValue(['Run'])
-    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [], elevation: [] })
+    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [], elevation: [], effort: [] })
     vi.mocked(api.stats).mockResolvedValue({ count: 0, totalAscentGainM: 0 })
   })
 
@@ -115,7 +115,7 @@ describe('activities store', () => {
     vi.mocked(api.badges).mockClear()
     vi.mocked(api.stats).mockClear()
     vi.mocked(api.activities).mockResolvedValue({ activities: [summary(2)] })
-    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [2], elevation: [2] })
+    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [2], elevation: [2], effort: [2] })
     vi.mocked(api.stats).mockResolvedValue({ count: 1, totalAscentGainM: 480 })
     await store.reloadRankings()
 
@@ -147,7 +147,7 @@ describe('activities store', () => {
 
   it('reloads with the chosen sort and exposes badges', async () => {
     vi.mocked(api.activities).mockResolvedValue({ activities: [summary(1)] })
-    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [3, 1], elevation: [1] })
+    vi.mocked(api.badges).mockResolvedValue({ ascentSpeed: [3, 1], elevation: [1], effort: [3] })
     const store = useActivitiesStore()
     await store.loadFirstPage()
     expect(store.badges.ascentSpeed).toEqual([3, 1])

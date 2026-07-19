@@ -187,6 +187,8 @@ export interface AuthStatus {
 export interface ActivityBadges {
   ascentSpeed: number[]
   elevation: number[]
+  /** Km-effort score: distanceKm + (D+ / 100) × (Vspeed / 400). */
+  effort: number[]
 }
 
 export interface ActivitiesPage {

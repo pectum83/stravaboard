@@ -11,6 +11,7 @@ import {
   listSportTypes,
   parseCursor,
   topByAscentSpeed,
+  topByEffort,
   topByElevation,
   toSummary,
 } from '../repositories/activities.repo.js'
@@ -98,6 +99,7 @@ export function registerActivityRoutes(app: FastifyInstance, db: Db, sync: SyncS
     return {
       ascentSpeed: topByAscentSpeed(db, req.athleteId, 3, filter),
       elevation: topByElevation(db, req.athleteId, 3, filter),
+      effort: topByEffort(db, req.athleteId, 3, filter),
     }
   })
 

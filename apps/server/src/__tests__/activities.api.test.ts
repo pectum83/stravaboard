@@ -149,7 +149,12 @@ describe('activities API', () => {
     }
     const { app, cookies } = await appWithAthlete(db)
     const res = await app.inject({ method: 'GET', url: '/api/activities/badges', cookies })
-    expect(res.json()).toEqual({ ascentSpeed: [2, 4, 5], elevation: [3, 5, 4] })
+    // Effort (all 10 km): 5 → 14.5, 4 → 13.5, 1 → 11.25 km-effort.
+    expect(res.json()).toEqual({
+      ascentSpeed: [2, 4, 5],
+      elevation: [3, 5, 4],
+      effort: [5, 4, 1],
+    })
   })
 
   it('restricts badges to the query filter', async () => {
