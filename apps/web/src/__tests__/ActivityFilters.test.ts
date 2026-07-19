@@ -5,7 +5,7 @@ import { EMPTY_FILTERS } from '../stores/activities'
 
 function mountFilters(
   overrides = {},
-  sort: 'date' | 'ascentSpeed' | 'elevation' | 'descent' = 'date',
+  sort: 'date' | 'ascentSpeed' | 'elevation' | 'descent' | 'effort' = 'date',
 ) {
   return mount(ActivityFilters, {
     props: {
@@ -58,9 +58,10 @@ describe('ActivityFilters', () => {
       'Best ascent speed',
       'Most elevation',
       'Most descent',
+      'Best effort',
     ])
-    await sortSelect.setValue('descent')
-    expect(wrapper.emitted('update:sort')).toEqual([['descent']])
+    await sortSelect.setValue('effort')
+    expect(wrapper.emitted('update:sort')).toEqual([['effort']])
   })
 
   it('summarises the active sort and filtered state in the summary', () => {

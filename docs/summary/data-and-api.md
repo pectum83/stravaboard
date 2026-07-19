@@ -98,7 +98,7 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   streamsStatus), `listActivities(db, {limit, cursor, filter, sort})` with
   `ActivityFilter {q, fromEpoch, toEpochExclusive, sportType}` (q uses LIKE
   with `ESCAPE '\'`, wildcards escaped by `escapeLike`; ASCII-case-insensitive
-  only) and `ActivitySort 'date'|'ascentSpeed'|'elevation'|'descent'`. **Composite
+  only) and `ActivitySort 'date'|'ascentSpeed'|'elevation'|'descent'|'effort'`. **Composite
   keyset cursor** `{value, id}` (`sortValueExpr` COALESCEs the metric to
   `METRIC_NULL = -1`, orders `value DESC, id DESC`; WHERE `value < c.value OR
 (value = c.value AND id < c.id)`); `cursorFor(sort,row)`→`"<value>:<id>"`,
@@ -111,7 +111,11 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   (`effortExpr`, no stored column: classic 100 m ↑ = 1 km flat equivalence,
   climb term weighted linearly by mean ascent speed vs a 400 m/h reference —
   the t × I² training-load model; only rows with computed metrics and a
-  positive score qualify, flat activities rank via distance);
+  positive score qualify, flat activities rank via distance). The `effort`
+  sort uses the same expression (NULL metrics → METRIC_NULL, so pending rows
+  never rank on distance alone); its cursor value comes from `effortScore`,
+  the TS mirror of `effortExpr` — **keep both formulas operation-for-operation
+  identical** or keyset pagination breaks;
   `aggregateActivities(db,
 athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
   list header — `SUM(COALESCE(ascent_gain_m,0))`);
@@ -151,7 +155,7 @@ athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
   (state, fetchedActivities, pendingStreams, pendingLatlngBackfill,
   rateLimitResumeAt?, error?).
 - `GET /activities?limit&before&sort&q&from&to&sportType` → `ActivitiesPage`.
-  `sort` = `date`(default)|`ascentSpeed`|`elevation`|`descent`. `before` is the
+  `sort` = `date`(default)|`ascentSpeed`|`elevation`|`descent`|`effort`. `before` is the
   composite cursor `"<value>:<id>"` (exclusive), always newest/highest first;
   filters compose with it. `nextBefore` is built with `cursorFor` for the chosen
   sort. `from`/`to` are `YYYY-MM-DD`, `to` inclusive (implemented as `< to+86400`).

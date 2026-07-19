@@ -118,6 +118,15 @@ function formatDate(iso: string): string {
 function km(m: number): string {
   return `${(m / 1000).toFixed(1)} km`
 }
+
+/**
+ * Km-effort score, mirroring the server's ranking formula
+ * (distanceKm + D+/100 × Vspeed/400); null until metrics are computed.
+ */
+function effortKm(a: ActivitySummary): number | null {
+  if (a.ascentGainM == null) return null
+  return a.distanceM / 1000 + (a.ascentGainM * (a.ascentMeanVSpeed ?? 0)) / 40000
+}
 </script>
 
 <template>
@@ -180,6 +189,9 @@ function km(m: number): string {
               {{ km(activity.distanceM) }} · D+ {{ Math.round(activity.ascentGainM ?? 0) }} m
               <template v-if="sort === 'descent'">
                 · D- {{ Math.round(activity.descentLossM ?? 0) }} m
+              </template>
+              <template v-else-if="sort === 'effort' && effortKm(activity) !== null">
+                · 💪 {{ effortKm(activity)!.toFixed(1) }} km-eff
               </template>
               <template v-else-if="activity.ascentMeanVSpeed">
                 · ↑ {{ Math.round(activity.ascentMeanVSpeed) }} m/h

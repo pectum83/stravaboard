@@ -19,6 +19,7 @@ const SORT_LABELS: Record<ActivitySort, string> = {
   ascentSpeed: 'Best ascent speed',
   elevation: 'Most elevation',
   descent: 'Most descent',
+  effort: 'Best effort',
 }
 
 function onSort(event: Event): void {

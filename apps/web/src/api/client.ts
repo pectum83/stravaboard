@@ -9,7 +9,7 @@ import type {
   SyncStatus,
 } from '@stravaboard/shared'
 
-export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent'
+export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent' | 'effort'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)

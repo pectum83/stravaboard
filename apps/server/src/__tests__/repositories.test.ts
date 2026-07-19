@@ -317,6 +317,18 @@ describe('sorting and badges', () => {
 
     expect(topByEffort(db, 1, 3)).toEqual([1, 2, 3])
     expect(topByEffort(db, 1, 3, { sportType: 'Run' })).toEqual([2, 3])
+
+    // The effort sort pages over the same score with a working cursor; the
+    // uncomputed activity (4) sorts last instead of ranking on distance alone.
+    const page1 = listActivities(db, { athleteId: 1, limit: 2, sort: 'effort' })
+    expect(page1.map((a) => a.id)).toEqual([1, 2])
+    const page2 = listActivities(db, {
+      athleteId: 1,
+      limit: 2,
+      sort: 'effort',
+      cursor: parseCursor(cursorFor('effort', page1[1]!))!,
+    })
+    expect(page2.map((a) => a.id)).toEqual([3, 4])
   })
 
   it('round-trips cursors through cursorFor/parseCursor', () => {

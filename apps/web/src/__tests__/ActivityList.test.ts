@@ -65,6 +65,21 @@ describe('ActivityList', () => {
     expect(wrapper.text()).not.toContain('m/h')
   })
 
+  it('surfaces the km-effort score under the effort sort', () => {
+    const wrapper = mountList({
+      // 10 + (1000/100) × (500/400) = 22.5 km-effort.
+      activities: [
+        activity(1, { distanceM: 10_000, ascentGainM: 1000, ascentMeanVSpeed: 500 }),
+        activity(2, { ascentGainM: null, ascentMeanVSpeed: null }), // not computed → no score
+      ],
+      sort: 'effort',
+    })
+    expect(wrapper.text()).toContain('💪 22.5 km-eff')
+    expect(wrapper.text()).not.toContain('m/h')
+    const rows = wrapper.findAll('button.item')
+    expect(rows[1]!.text()).not.toContain('km-eff')
+  })
+
   it('emits select with the activity id on click', async () => {
     const wrapper = mountList({ activities: [activity(7)] })
     await wrapper.find('button.item').trigger('click')

@@ -25,7 +25,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   /** Opaque keyset cursor `<sortValue>:<id>` from a previous page. */
   before: z.string().optional(),
-  sort: z.enum(['date', 'ascentSpeed', 'elevation', 'descent']).default('date'),
+  sort: z.enum(['date', 'ascentSpeed', 'elevation', 'descent', 'effort']).default('date'),
   q: z.string().trim().min(1).max(100).optional(),
   from: isoDay.optional(),
   to: isoDay.optional(),

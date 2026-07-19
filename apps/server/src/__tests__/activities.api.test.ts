@@ -155,6 +155,10 @@ describe('activities API', () => {
       elevation: [3, 5, 4],
       effort: [5, 4, 1],
     })
+
+    // The same score also drives the effort sort of the list.
+    const sorted = await app.inject({ method: 'GET', url: '/api/activities?sort=effort', cookies })
+    expect(sorted.json().activities.map((a: { id: number }) => a.id)).toEqual([5, 4, 1, 2, 3])
   })
 
   it('restricts badges to the query filter', async () => {

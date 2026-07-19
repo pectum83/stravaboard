@@ -14,7 +14,7 @@ controls wrap) and the chart renders in compact mode (see buildChartOptions).
 
 - `api/client.ts` — typed fetch wrappers: `authStatus`, `activities(params)`
   (`ActivityListParams {limit, before, sort, q, from, to, sportType}`; `sort:
-ActivitySort 'date'|'ascentSpeed'|'elevation'|'descent'`, omitted when `'date'`),
+ActivitySort 'date'|'ascentSpeed'|'elevation'|'descent'|'effort'`, omitted when `'date'`),
   `badges(params?)` (`ActivityBadgeParams` = the list filter minus paging/sort →
   `ActivityBadges`), `stats(params?)` (same filter → `ActivityAggregate {count,
 totalAscentGainM}`), `sportTypes()`, `refreshActivity(id)` (POST),
@@ -150,7 +150,9 @@ maptilerKey|null}`. Opens on the `topo` layer when a key is set, else `streets`.
 - `ActivityList.vue` — props activities/selectedId/hasMore/loading/**badges**/
   **sort**, emits select/loadMore. Shows `D+ <n> m` (`ascentGainM`, lift-excluded
   — not Strava's raw total) in the meta line; the secondary metric follows the
-  `sort` prop — `· D- <n> m` (`descentLossM`) under the `descent` sort, else
+  `sort` prop — `· D- <n> m` (`descentLossM`) under the `descent` sort,
+  `· 💪 <n> km-eff` under the `effort` sort (`effortKm`, the client mirror of
+  the server's km-effort formula; hidden while metrics are uncomputed), else
   `· ↑ <n> m/h` (ascentMeanVSpeed when present) — plus 🥇🥈🥉 medals before the
   name via `badgeMap` (id → medals, with a `#N <ranking>` title); each medal
   carries a raised `.medal-kind` icon naming its ranking (⚡ ascent speed,

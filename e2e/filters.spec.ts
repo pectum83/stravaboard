@@ -53,6 +53,13 @@ test('sorts by most descent and shows whole-filter totals', async ({ page }) => 
   const items = page.locator('button.item')
   await expect(items.first()).toContainText('Morning Mountain Run')
   await expect(items.first()).toContainText('D-')
+
+  // Best effort: the mountain run leads on the km-effort score and the meta
+  // line switches to the 💪 readout; the metric-less trainer session is last.
+  await page.getByLabel('sort by').selectOption({ label: 'Best effort' })
+  await expect(items.first()).toContainText('Morning Mountain Run')
+  await expect(items.first()).toContainText('km-eff')
+  await expect(items.last()).toContainText('Indoor Trainer Session')
 })
 
 test('filters compose: word plus sport with no match shows an empty list', async ({ page }) => {

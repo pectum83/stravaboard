@@ -47,10 +47,11 @@ streets / **topo** (contour lines + hillshade) / satellite / 3D-terrain layers,
 and hovering the chart moves a marker
 along the trace. The activity list can be **filtered** by word, date range and
 sport type (all gathered in a collapsible "Filters & sort" section) and
-**sorted** by date, best mean ascent speed, climbing gain, or **most descent**
+**sorted** by date, best mean ascent speed, climbing gain, **most descent**
 (total D− — useful for point-to-point outings like alpine ski or multi-day
 treks, where you descend far more than you climb; when sorted this way each row
-shows its D−). Just above the list, a line totals the **number of activities**
+shows its D−), or **best effort** (the 💪 km-effort score below; each row then
+shows its score). Just above the list, a line totals the **number of activities**
 in the current filter and their **cumulated D+**. The list
 opens on **Hike** by default when you have any hikes. The three best activities
 in each ranking get 🥇🥈🥉 **badges**, tagged ⚡ for the ascent-speed podium,

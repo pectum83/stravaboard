@@ -41,10 +41,36 @@ export function upsertActivitySummary(db: Db, row: ActivityRow): void {
     .run()
 }
 
-export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent'
+export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent' | 'effort'
 
 /** Metric value NULL sorts last: activities without data rank below a 0. */
 const METRIC_NULL = -1
+
+/**
+ * Effort score in km-effort (equivalent flat kilometres):
+ *
+ *   distanceKm + (D+ / 100) × (Vspeed / 400)
+ *
+ * Base is the classic mountaineering equivalence (100 m of climb ≈ 1 km on the
+ * flat, both in energy and in Swiss-rule time at 4 km/h / 400 m/h), so a long
+ * flat walk scores its full distance. The climb part is then weighted by the
+ * mean ascent speed relative to the 400 m/h reference: physiological load ≈
+ * duration × intensity² (TRIMP/TSS model), and with climb duration D+/Vspeed
+ * and intensity Vspeed/400 that collapses to a linear Vspeed/400 factor. At
+ * exactly 400 m/h the formula degrades to the plain km-effort rule.
+ *
+ * NULL until the climb metrics are computed (a pending activity must not rank
+ * on distance alone). `effortScore` is the TS mirror — the cursor built from a
+ * row must equal what SQL computes for it, bit for bit, so both keep the exact
+ * same operations in the exact same order.
+ */
+const effortExpr = sql<number>`(${activities.distanceM} / 1000.0) + (${activities.ascentGainM} * COALESCE(${activities.ascentMeanVSpeed}, 0)) / 40000.0`
+
+/** TS mirror of `effortExpr` (see there); null when metrics are not computed. */
+function effortScore(row: ActivityRow): number | null {
+  if (row.ascentGainM == null) return null
+  return row.distanceM / 1000.0 + (row.ascentGainM * (row.ascentMeanVSpeed ?? 0)) / 40000.0
+}
 
 export interface ActivityFilter {
   /** Name substring (SQLite LIKE — case-insensitive for ASCII only). */
@@ -81,6 +107,8 @@ function sortValueExpr(sort: ActivitySort) {
       return sql<number>`COALESCE(${activities.ascentGainM}, ${METRIC_NULL})`
     case 'descent':
       return sql<number>`COALESCE(${activities.descentLossM}, ${METRIC_NULL})`
+    case 'effort':
+      return sql<number>`COALESCE(${effortExpr}, ${METRIC_NULL})`
   }
 }
 
@@ -93,7 +121,9 @@ export function cursorFor(sort: ActivitySort, row: ActivityRow): string {
         ? (row.ascentGainM ?? METRIC_NULL)
         : sort === 'descent'
           ? (row.descentLossM ?? METRIC_NULL)
-          : (row.ascentMeanVSpeed ?? METRIC_NULL)
+          : sort === 'effort'
+            ? (effortScore(row) ?? METRIC_NULL)
+            : (row.ascentMeanVSpeed ?? METRIC_NULL)
   return `${value}:${row.id}`
 }
 
@@ -167,21 +197,6 @@ export function topByAscentSpeed(
     .all()
     .map((r) => r.id)
 }
-
-/**
- * Effort score in km-effort (equivalent flat kilometres):
- *
- *   distanceKm + (D+ / 100) × (Vspeed / 400)
- *
- * Base is the classic mountaineering equivalence (100 m of climb ≈ 1 km on the
- * flat, both in energy and in Swiss-rule time at 4 km/h / 400 m/h), so a long
- * flat walk scores its full distance. The climb part is then weighted by the
- * mean ascent speed relative to the 400 m/h reference: physiological load ≈
- * duration × intensity² (TRIMP/TSS model), and with climb duration D+/Vspeed
- * and intensity Vspeed/400 that collapses to a linear Vspeed/400 factor. At
- * exactly 400 m/h the formula degrades to the plain km-effort rule.
- */
-const effortExpr = sql<number>`(${activities.distanceM} / 1000.0) + (${activities.ascentGainM} * COALESCE(${activities.ascentMeanVSpeed}, 0)) / 40000.0`
 
 /**
  * Top activity ids by effort score (see `effortExpr`), within `filter`. Only
