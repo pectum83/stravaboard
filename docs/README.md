@@ -53,7 +53,8 @@ treks, where you descend far more than you climb; when sorted this way each row
 shows its D−). Just above the list, a line totals the **number of activities**
 in the current filter and their **cumulated D+**. The list
 opens on **Hike** by default when you have any hikes. The three best activities
-in each ranking get 🥇🥈🥉 **badges** — computed within the current filter, so a
+in each ranking get 🥇🥈🥉 **badges**, tagged ⚡ for the ascent-speed podium and
+⬆️ for the climbing-gain one — computed within the current filter, so a
 filtered view badges its own best — and the mean ascent speed is shown on every
 activity. The **D+** and the climbing-gain ranking count only the real climbing
 you did (the same lift/artefact-excluded ascents as above), so a day with a lift

@@ -88,10 +88,11 @@ describe('ActivityList', () => {
       badges: { ascentSpeed: [2, 1], elevation: [1] },
     })
     const items = wrapper.findAll('button.item')
-    // Activity 1 is #2 ascent speed AND #1 elevation → two medals.
-    expect(items[0]!.find('.medals').text()).toBe('🥈🥇')
+    // Activity 1 is #2 ascent speed AND #1 elevation → two medals, each
+    // tagged with its ranking's icon (⚡ ascent speed, ⬆️ elevation).
+    expect(items[0]!.find('.medals').text()).toBe('🥈⚡🥇⬆️')
     // Activity 2 is #1 ascent speed → one gold.
-    expect(items[1]!.find('.medals').text()).toBe('🥇')
+    expect(items[1]!.find('.medals').text()).toBe('🥇⚡')
     // Activity 3 has no badge.
     expect(items[2]!.find('.medals').exists()).toBe(false)
   })

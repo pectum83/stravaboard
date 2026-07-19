@@ -91,18 +91,22 @@ async function saveEdit(activity: ActivitySummary): Promise<void> {
   }
 }
 
-/** Per activity id: the medals it holds, with a human title for the tooltip. */
+/**
+ * Per activity id: the medals it holds, each tagged with its ranking's icon
+ * (⚡ ascent speed, ⬆️ elevation) so the two podiums are told apart at a
+ * glance, plus a human title for the tooltip.
+ */
 const badgeMap = computed(() => {
-  const map = new Map<number, { medal: string; title: string }[]>()
-  const add = (ids: number[], label: string) => {
+  const map = new Map<number, { medal: string; icon: string; title: string }[]>()
+  const add = (ids: number[], icon: string, label: string) => {
     ids.forEach((id, i) => {
       const list = map.get(id) ?? []
-      list.push({ medal: MEDALS[i]!, title: `#${i + 1} ${label}` })
+      list.push({ medal: MEDALS[i]!, icon, title: `#${i + 1} ${label}` })
       map.set(id, list)
     })
   }
-  add(props.badges.ascentSpeed, 'ascent speed')
-  add(props.badges.elevation, 'elevation')
+  add(props.badges.ascentSpeed, '⚡', 'ascent speed')
+  add(props.badges.elevation, '⬆️', 'elevation')
   return map
 })
 
@@ -163,7 +167,7 @@ function km(m: number): string {
                   :key="b.title"
                   class="medal"
                   :title="b.title"
-                  >{{ b.medal }}</span
+                  >{{ b.medal }}<span class="medal-kind">{{ b.icon }}</span></span
                 >
               </span>
               {{ activity.name }}
@@ -344,6 +348,12 @@ ul {
 
 .medal {
   font-size: 0.85rem;
+}
+
+/* Ranking icon riding the medal: small and raised so it reads as a tag. */
+.medal-kind {
+  font-size: 0.6rem;
+  vertical-align: super;
 }
 
 .meta {
