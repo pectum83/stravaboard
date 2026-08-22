@@ -181,6 +181,22 @@ export interface AuthStatus {
   athleteId?: number
   /** Display name of the logged-in athlete. */
   name?: string
+  /** True when the logged-in athlete is the app owner (ADMIN_ATHLETE_ID). */
+  isAdmin?: boolean
+}
+
+/** One entry of the sign-in allowlist, as shown on the admin page. */
+export interface AllowedAthlete {
+  /** Strava athlete id allowed to sign in. */
+  athleteId: number
+  /** Free-form label ("cousin Paul"), or null. */
+  note: string | null
+  /** ISO date the id was added. */
+  addedAt: string
+  /** Display name, once the athlete has actually connected; null before that. */
+  name: string | null
+  /** Whether the athlete has already connected their Strava account. */
+  connected: boolean
 }
 
 /** Top-3 activity ids per ranking, best first. */

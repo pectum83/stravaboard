@@ -10,9 +10,15 @@ cookie** (`session`, `@fastify/cookie`, secret `COOKIE_SECRET`, ~180 d) holds
 the athlete id. `src/auth/session.ts`
 registers an onRequest guard: every `/api/*` route except `/api/auth/*` and
 `/api/health` 401s without a valid cookie and sets `req.athleteId`.
-`ALLOWED_ATHLETE_IDS` (comma-separated, empty = anyone) gates the OAuth
-callback: denied athletes are redirected to `/?denied=<id>` with nothing
-persisted. All data is partitioned by athlete id; routes must never serve
+The **`allowed_athletes` table** gates the OAuth callback (empty table = anyone):
+denied athletes are redirected to `/?denied=<id>` with nothing persisted, and the
+owner gets an email carrying the id (`src/mail/deniedLogin.ts`, one alert per
+athlete per hour, fire-and-forget so SMTP can never block the redirect; no
+mailer configured = silent). `ALLOWED_ATHLETE_IDS` only **seeds** that table on
+the first boot where it is empty — afterwards the admin page owns it, so a
+removed id never comes back. `ADMIN_ATHLETE_ID` marks the single owner
+(`isAdmin(config, athleteId)` in `config.ts`), who alone may call
+`/api/admin/*`. All data is partitioned by athlete id; routes must never serve
 another athlete's rows (ownership check on `/:id/streams` and `/:id/refresh`
 returns 404, not 403).
 
@@ -50,6 +56,11 @@ applied automatically by `openDb`).
   fetched yet → backfill set; `'[]'` = activity has no GPS, terminal**), fetchedAt.
 - `sync_state` (one row per athlete, PK athlete_id): lastActivityStartEpoch
   (checkpoint), status, error.
+- `allowed_athletes`: athlete_id (PK), note (nullable label), addedAt (ISO) —
+  the sign-in allowlist, edited from the admin page
+  (`repositories/allowlist.repo.ts`: `listAllowed` left-joins `athletes` so each
+  entry reports `name`/`connected`, `seedAllowlist` is a no-op unless the table
+  is empty).
 - `settings`: key/value JSON — key `settings:<athleteId>`, merged over
   `DEFAULT_SETTINGS` on read (so new setting fields get defaults for free;
   stored values are never rewritten). Changing a `METRIC_SETTING_KEYS` field
@@ -91,6 +102,9 @@ ascent_mean_vspeed = NULL` after the metric algorithm gained altitude despiking
   altitude cleaning gained **noise-burst flattening** (submerged-watch garbage —
   a mid-hike swim used to add thousands of fake descent meters). Same "sync
   after deploying" caveat.
+- Migration `0011_allowed_athletes.sql` (drizzle-generated) creates
+  `allowed_athletes`. No metric reset; the table self-seeds from
+  `ALLOWED_ATHLETE_IDS` at the next boot.
 
 ## Repositories — `apps/server/src/repositories/*.repo.ts`
 
@@ -135,7 +149,7 @@ athleteId, filter) → {count, totalAscentGainM}` (whole-filter totals for the
 ## HTTP API (all under `/api`, routes in `apps/server/src/routes/`)
 
 - `GET /health` → `{status:'ok'}` (app.ts) — the only always-public data route.
-- `GET /auth/status` → `{connected, athleteId?, name?}` from the session;
+- `GET /auth/status` → `{connected, athleteId?, name?, isAdmin?}` from the session;
   `GET /auth/strava/login` → redirect; `GET /auth/strava/callback` → code
   exchange (exchangeCode does NOT persist; the callback checks the allowlist,
   then saves tokens + athlete and sets the cookie), starts sync, redirects;
@@ -186,6 +200,16 @@ sportType?: enum STRAVA_SPORT_TYPES}`, at least one field (else 400).
   sport-type-only PUT** (no-op if the first call did apply it). 200 `ActivitySummary`;
   404 unknown/not owned; 429 `resumeAt`; **403 when Strava rejects for a
   missing `activity:write` scope → "reconnect your Strava account"**.
+- `/admin/*` (`routes/admin.ts`) — **403 unless `req.athleteId ===
+ADMIN_ATHLETE_ID`** (the session guard already answers 401):
+  `GET /admin/allowlist` → `{athletes: AllowedAthlete[]}`;
+  `POST /admin/allowlist` zod `{athleteId: int>0, note?: ≤100 chars}` → 201 with
+  the entry (re-adding keeps the existing note), 400 on invalid input;
+  `DELETE /admin/allowlist/:id` → `{removed:true}`, **400 for the admin's own id**
+  (never lock the owner out), 404 when absent;
+  `POST /admin/restart` → 202 `{restarting:true}` then exits the process 100 ms
+  later (systemd `Restart=always` brings it back); the exit function is injected
+  so tests never kill the runner.
 - `GET /activities/:id/streams` → `ActivityStreams` (shared type:
   `{time, distance, altitude|null, latlng|null}`); 404 with `streamsStatus`
   when absent.

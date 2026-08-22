@@ -37,6 +37,8 @@ export default defineConfig({
         MAPTILER_KEY: 'e2e-key',
         // Exercises the allowlist accept path for the stub athlete.
         ALLOWED_ATHLETE_IDS: '4242',
+        // The seeded athlete is the owner, so the admin page is exercised too.
+        ADMIN_ATHLETE_ID: '4242',
         COOKIE_SECRET: 'e2e-cookie-secret',
       },
     },

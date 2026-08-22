@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.js'
 import { loadConfig, type Config } from '../config.js'
 import { openDb, type Db } from '../db/client.js'
+import type { Mailer } from '../mail/mailer.js'
 import { upsertAthlete } from '../repositories/athletes.repo.js'
 import { saveTokens } from '../repositories/tokens.repo.js'
 import type { FetchLike } from '../strava/oauth.js'
@@ -19,6 +20,7 @@ export async function testApp(
   overrides: Partial<Config> = {},
   db: Db = testDb(),
   fetchImpl?: FetchLike,
+  deps: { mailer?: Mailer | null; exit?: () => void } = {},
 ): Promise<{ app: FastifyInstance; db: Db; sync: SyncService }> {
   const { app, sync } = await buildApp({
     config: testConfig(overrides),
@@ -26,8 +28,21 @@ export async function testApp(
     logger: false,
     fetchImpl,
     syncOptions: { sleep: async () => {} },
+    mailer: null,
+    ...deps,
   })
   return { app, db, sync }
+}
+
+/** Mailer double: records every message instead of talking to a relay. */
+export function stubMailer(): Mailer & { sent: { subject: string; text: string }[] } {
+  const sent: { subject: string; text: string }[] = []
+  return {
+    sent,
+    async send(message) {
+      sent.push(message)
+    },
+  }
 }
 
 /** Signed session cookie for `app.inject({ cookies: session(app, id) })`. */

@@ -20,6 +20,20 @@ const envSchema = z.object({
   ALLOWED_ATHLETE_IDS: z.string().default(''),
   /** Where the OAuth callback sends the browser back to ('/' when the server serves the app). */
   WEB_APP_URL: z.string().default('/'),
+  /** Strava athlete id of the owner; the only one allowed on /api/admin/*. 0 = no admin. */
+  ADMIN_ATHLETE_ID: z.coerce.number().int().min(0).default(0),
+  /** SMTP relay for the "sign-in refused" alert; empty host/user/password = no mail. */
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().int().positive().default(465),
+  ),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASSWORD: z.string().default(''),
+  /** Envelope sender; falls back to SMTP_USER when empty. */
+  MAIL_FROM: z.string().default(''),
+  /** Where the alerts go; falls back to MAIL_FROM/SMTP_USER when empty. */
+  MAIL_TO: z.string().default(''),
 })
 
 export type Config = z.infer<typeof envSchema>
@@ -37,4 +51,9 @@ export function allowedAthleteIds(config: Config): number[] {
   return config.ALLOWED_ATHLETE_IDS.split(',')
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isInteger(n) && n > 0)
+}
+
+/** True for the single owner athlete; false when ADMIN_ATHLETE_ID is unset. */
+export function isAdmin(config: Config, athleteId: number): boolean {
+  return config.ADMIN_ATHLETE_ID > 0 && athleteId === config.ADMIN_ATHLETE_ID
 }

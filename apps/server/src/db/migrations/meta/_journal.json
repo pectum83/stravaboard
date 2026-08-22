@@ -78,6 +78,13 @@
       "when": 1785100000000,
       "tag": "0010_recompute_noise_flatten",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1787390004701,
+      "tag": "0011_allowed_athletes",
+      "breakpoints": true
     }
   ]
 }

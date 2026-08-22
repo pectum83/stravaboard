@@ -1,5 +1,6 @@
 import type {
   ActivitiesPage,
+  AllowedAthlete,
   ActivityAggregate,
   ActivityBadges,
   ActivityStreams,
@@ -95,4 +96,16 @@ export const api = {
     }),
   startSync: () => request<{ started: boolean }>('/api/sync', { method: 'POST' }),
   syncStatus: () => request<SyncStatus>('/api/sync/status'),
+  /** Admin only (403 otherwise) — the sign-in allowlist. */
+  allowlist: () => request<{ athletes: AllowedAthlete[] }>('/api/admin/allowlist'),
+  allowAthlete: (athleteId: number, note: string) =>
+    request<AllowedAthlete>('/api/admin/allowlist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(note ? { athleteId, note } : { athleteId }),
+    }),
+  disallowAthlete: (athleteId: number) =>
+    request<{ removed: boolean }>(`/api/admin/allowlist/${athleteId}`, { method: 'DELETE' }),
+  restartServer: () => request<{ restarting: boolean }>('/api/admin/restart', { method: 'POST' }),
+  health: () => request<{ status: string }>('/api/health'),
 }

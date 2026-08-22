@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { api } from '../api/client'
+import { ADMIN_ROUTE } from '../composables/useHashRoute'
+import { useAuthStore } from '../stores/auth'
 import { useActivitiesStore } from '../stores/activities'
 import { useSettingsStore } from '../stores/settings'
 import { useStreams } from '../composables/useStreams'
@@ -16,8 +18,10 @@ import { computeVSpeedModel } from '../chart/computeVSpeed'
 
 const activitiesStore = useActivitiesStore()
 const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
 const { activities, selectedId, hasMore, loading } = storeToRefs(activitiesStore)
 const { settings } = storeToRefs(settingsStore)
+const { connected, name: userName, isAdmin } = storeToRefs(authStore)
 
 // A metric-affecting settings change makes the server recompute the stored
 // ranking metrics; reload the list, badges and totals so they match the chart
@@ -28,9 +32,6 @@ watch(
     void activitiesStore.reloadRankings()
   },
 )
-
-const connected = ref<boolean | null>(null)
-const userName = ref<string | null>(null)
 
 /** Athlete id shown after a login attempt outside the family allowlist. */
 const deniedAthleteId = new URLSearchParams(window.location.search).get('denied')
@@ -89,10 +90,8 @@ async function reloadActivity(): Promise<void> {
 }
 
 onMounted(async () => {
-  const status = await api.authStatus()
-  connected.value = status.connected
-  userName.value = status.name ?? null
-  if (status.connected) {
+  await authStore.load()
+  if (connected.value) {
     await Promise.all([
       settingsStore.load(),
       activitiesStore.loadFirstPage(),
@@ -122,6 +121,7 @@ onMounted(async () => {
     <template v-else-if="connected">
       <SyncStatusBar @synced="activitiesStore.loadFirstPage()">
         <span v-if="userName" class="user">{{ userName }}</span>
+        <a v-if="isAdmin" class="admin-link" :href="ADMIN_ROUTE">Admin</a>
         <button type="button" class="logout" @click="logout">Log out</button>
       </SyncStatusBar>
       <div class="panes">
@@ -242,6 +242,16 @@ onMounted(async () => {
 .user {
   color: #52514e;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-link {
+  padding: 5px 12px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  color: #52514e;
+  text-decoration: none;
+  font-size: 0.85rem;
   white-space: nowrap;
 }
 

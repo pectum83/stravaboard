@@ -1,6 +1,8 @@
 # Frontend — `apps/web/src/`
 
-Single page, no router. Entry `main.ts` → `App.vue` → `pages/DashboardPage.vue`.
+Two pages, no router — `App.vue` switches on `window.location.hash` via
+`composables/useHashRoute.ts` (`ADMIN_ROUTE = '#/admin'` → `pages/AdminPage.vue`,
+anything else → `pages/DashboardPage.vue`). Entry `main.ts` → `App.vue`.
 Scoped CSS, light palette only, no CSS framework.
 
 **Responsive**: one breakpoint, `(max-width: 900px)` (`COMPACT_MEDIA_QUERY` in
@@ -21,6 +23,9 @@ totalAscentGainM}`), `sportTypes()`, `refreshActivity(id)` (POST),
   `config()` (`{maptilerKey}`), `streams(id)`, `settings`/`saveSettings`,
   `startSync`, `syncStatus`, `updateActivity(id, {name?, sportType?})` (PATCH).
   Errors → `ApiError(status)`.
+- `stores/auth.ts` (Pinia setup store) — `connected` (null while the first call
+  is in flight), `athleteId`, `name`, `isAdmin`; `load()` calls
+  `api.authStatus()`. Both pages use it; DashboardPage keeps no local auth refs.
 - `stores/settings.ts` (Pinia setup store) — `settings` seeded from
   `DEFAULT_SETTINGS`; `load()` GET; `update(patch)` applies immediately,
   **debounced 500 ms PUT** of the full object; `saveError`. Tracks whether any
@@ -61,7 +66,19 @@ totalAscentGainM}`), `sportTypes()`, `refreshActivity(id)` (POST),
 Sign-in page = the app itself when `authStatus` says disconnected ("Connect
 with Strava" link → OAuth). `?denied=<athleteId>` after a refused login shows
 the id so the admin can extend the allowlist. When connected, the sync bar's
-slot shows the athlete name + "Log out" (POST logout then hard reload).
+slot shows the athlete name, an `Admin` link (only when `auth.isAdmin`) and
+"Log out" (POST logout then hard reload).
+
+## AdminPage (`#/admin`, owner only)
+
+`pages/AdminPage.vue`: loads the auth store, and renders the "reserved for the
+app owner" notice unless `connected && isAdmin` (the API is the real gate — the
+SPA shell is public). Shows the allowlist table (id / name / note / added date /
+Remove behind a `confirm()`), an add form (numeric id validated client-side
+before the POST, optional note, inline error, draft kept on failure) and a
+"Restart the server" button — also behind a `confirm()` — which POSTs
+`/api/admin/restart` then polls `api.health()` every 500 ms (30 tries) until the
+process is back. **Never click that button in e2e.**
 
 ## DashboardPage
 

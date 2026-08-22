@@ -98,3 +98,16 @@ export const settings = sqliteTable('settings', {
   /** JSON-encoded value. */
   value: text('value').notNull(),
 })
+
+/**
+ * Sign-in allowlist. Seeded once from ALLOWED_ATHLETE_IDS when empty, then
+ * managed from the admin page — an empty table lets anyone connect.
+ */
+export const allowedAthletes = sqliteTable('allowed_athletes', {
+  /** Strava athlete id allowed to sign in. */
+  athleteId: integer('athlete_id').primaryKey(),
+  /** Free-form label ("cousin Paul"). */
+  note: text('note'),
+  /** ISO date the id was added. */
+  addedAt: text('added_at').notNull(),
+})

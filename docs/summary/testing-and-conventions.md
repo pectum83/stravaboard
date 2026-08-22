@@ -20,7 +20,8 @@
   freshly seeded DB (`seed.ts`: athlete 4242 with mountain run incl. 90 s
   mid-climb pause + latlng, flat run, streamless VirtualRide), serving the
   **built** web app (`pnpm build` first!). Config sets `MAPTILER_KEY`,
-  `ALLOWED_ATHLETE_IDS: '4242'`, `COOKIE_SECRET` and `APP_BASE_URL` (the
+  `ALLOWED_ATHLETE_IDS: '4242'`, `ADMIN_ATHLETE_ID: '4242'` (so `admin.spec.ts`
+  exercises the owner path), `COOKIE_SECRET` and `APP_BASE_URL` (the
   OAuth redirect needs the e2e port). Every spec starts with
   `login(page)` (`e2e/login.ts`) — the stub's /oauth/authorize bounces
   straight back to the callback, which sets the session cookie.
@@ -35,6 +36,10 @@
   failures. New component → mounted component test.
 - Map assertions in e2e must tolerate WebGL-less environments (assert canvas
   OR the "Map unavailable" fallback).
+- **e2e never clicks "Restart the server"** on the admin page — it would kill
+  the server under test. `POST /api/admin/restart` is covered by an API test
+  with an injected `exit` (`testApp(..., { exit })`); `testApp` also takes a
+  `mailer` (`stubMailer()` records messages, default `null` = no mail).
 - `e2e/mobile.spec.ts` runs at iPhone 15 dimensions (393×659 viewport,
   isMobile/hasTouch on chromium) — layout changes must keep it green (stacked
   panes, no horizontal overflow).

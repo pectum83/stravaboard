@@ -148,7 +148,7 @@ describe('auth routes', () => {
       url: '/api/auth/status',
       cookies: { session: cookie!.value },
     })
-    expect(after.json()).toEqual({ connected: true, athleteId: 7, name: 'Chris' })
+    expect(after.json()).toEqual({ connected: true, athleteId: 7, name: 'Chris', isAdmin: false })
   })
 
   it('denies athletes outside the allowlist without storing anything', async () => {

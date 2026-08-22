@@ -21,8 +21,12 @@ e2e               Playwright suite: real server + seeded sqlite + local Strava s
   `HOST`, `DATABASE_PATH`, `APP_BASE_URL`, `WEB_APP_URL`, `WEB_DIST_PATH`,
   `STRAVA_API_BASE/OAUTH_BASE` (overridden in tests), `MAPTILER_KEY`
   (optional; empty → map falls back to plain OSM, no satellite/3D),
-  `COOKIE_SECRET` (session signing), `ALLOWED_ATHLETE_IDS` (family
-  allowlist, comma-separated; empty = anyone).
+  `COOKIE_SECRET` (session signing), `ALLOWED_ATHLETE_IDS` (**first-boot seed**
+  of the `allowed_athletes` table, comma-separated; the table is the source of
+  truth afterwards — empty table = anyone), `ADMIN_ATHLETE_ID` (the owner; the
+  only athlete allowed on `/api/admin/*` and the `#/admin` page; 0 = nobody),
+  `SMTP_HOST/PORT/USER/PASSWORD` + `MAIL_FROM`/`MAIL_TO` (alert mail for refused
+  sign-ins; empty host/user/password = no mail at all).
 - Config parsing: `apps/server/src/config.ts` (zod schema, defaults).
 
 ## Commands (from repo root)
@@ -58,8 +62,13 @@ https://strava.pectum.fr — Caddy (basic auth `cro`, bcrypt in
 /etc/caddy/Caddyfile, auto-HTTPS) → 127.0.0.1:3001 (`HOST` env pins the
 bind). App in /home/ubuntu/stravaboard (server/ dist+migrations, web/ SPA,
 data/ sqlite, .env chmod 600); systemd unit `stravaboard` runs
-`/usr/local/bin/node22 server/index.js` (nvm symlink). Scripts:
-`deploy/setup-vps.sh` (one-time, idempotent), `deploy/deploy.sh
+`/usr/local/bin/node22 server/index.js` (nvm symlink) with **`Restart=always`**
+— the admin page's restart button exits 0 and relies on systemd to bring the
+process back. Scripts:
+`deploy/setup-vps.sh` (one-time, idempotent; ensures `COOKIE_SECRET`,
+`ALLOWED_ATHLETE_IDS`, `ADMIN_ATHLETE_ID` and copies any `SMTP_*`/`MAIL_*` line
+set in the local untracked `.env` — the mailbox password never lands in the
+repo), `deploy/deploy.sh
 [--skip-checks]` (gates → build → rsync → npm install --omit=dev → restart →
 health poll). The runtime package.json is generated from
 apps/server/package.json minus the tsup-bundled @stravaboard/shared.

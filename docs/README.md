@@ -168,14 +168,23 @@ settings, filters and stats are personal.
 
 To add a family member:
 
-1. Add their Strava athlete id to `ALLOWED_ATHLETE_IDS` in the `.env`
-   (comma-separated) and restart the server. If they sign in before being
-   added, the sign-in page shows their id — copy it from there.
+1. Open the **admin page** (`/#/admin`, the _Admin_ link next to your name —
+   only the owner sees it) and add their Strava athlete id. It takes effect
+   immediately, no restart needed.
 2. Check the Strava API application's **athlete capacity** at
    <https://www.strava.com/settings/api> — new apps may be limited to one
    connected athlete until an increase is requested.
 3. They open the site, click **Connect with Strava**, and their history
    starts syncing.
+
+If somebody signs in before being added, they are refused: the sign-in page
+shows their athlete id, and — when the SMTP settings are filled in (see
+`.env.example`) — the owner receives an email with the id and name, at most one
+per athlete per hour. `ALLOWED_ATHLETE_IDS` in the `.env` only seeds the list
+the first time the app runs; after that the admin page is the source of truth.
+
+The admin page also has a **Restart the server** button, for the rare case where
+you edited the server's `.env` by hand and need it reloaded.
 
 ## How the sync works
 

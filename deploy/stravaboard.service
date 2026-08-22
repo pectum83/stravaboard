@@ -8,8 +8,9 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/stravaboard
 # node22 is a symlink to the nvm-installed Node 22 (created by setup-vps.sh)
 ExecStart=/usr/local/bin/node22 server/index.js
-Restart=on-failure
-RestartSec=5
+# always, not on-failure: the admin page's restart button exits cleanly (0).
+Restart=always
+RestartSec=2
 Environment=NODE_ENV=production
 
 # Hardening

@@ -12,8 +12,13 @@ set -euo pipefail
 HOST="${1:-crovps}"
 APP_DIR=/home/ubuntu/stravaboard
 DOMAIN=strava.pectum.fr
-# Strava athlete ids allowed to sign in (comma-separated). Extend for family.
+# Strava athlete ids allowed to sign in (comma-separated). Only seeds the
+# allowed_athletes table on the very first boot; after that the admin page owns it.
 ALLOWED_IDS="${ALLOWED_ATHLETE_IDS:-798002}"
+# The owner, i.e. the only athlete allowed on the admin page.
+ADMIN_ID="${ADMIN_ATHLETE_ID:-798002}"
+# Copied verbatim from the local (untracked) .env when present — never stored here.
+OPTIONAL_KEYS="SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD MAIL_FROM MAIL_TO"
 
 cd "$(dirname "$0")/.."
 
@@ -40,10 +45,11 @@ ssh "$HOST" 'sudo tee /etc/systemd/system/stravaboard.service >/dev/null && sudo
 
 echo "== .env =="
 if ssh "$HOST" "test -f $APP_DIR/.env"; then
-  # Idempotent upgrades: add the multi-user vars to an existing .env.
+  # Idempotent upgrades: add the missing vars to an existing .env.
   ssh "$HOST" "grep -q '^COOKIE_SECRET=' $APP_DIR/.env || echo 'COOKIE_SECRET=$(openssl rand -hex 32)' >> $APP_DIR/.env"
   ssh "$HOST" "grep -q '^ALLOWED_ATHLETE_IDS=' $APP_DIR/.env || echo 'ALLOWED_ATHLETE_IDS=$ALLOWED_IDS' >> $APP_DIR/.env"
-  echo ".env present — COOKIE_SECRET and ALLOWED_ATHLETE_IDS ensured"
+  ssh "$HOST" "grep -q '^ADMIN_ATHLETE_ID=' $APP_DIR/.env || echo 'ADMIN_ATHLETE_ID=$ADMIN_ID' >> $APP_DIR/.env"
+  echo ".env present — COOKIE_SECRET, ALLOWED_ATHLETE_IDS and ADMIN_ATHLETE_ID ensured"
 else
   {
     grep -E '^(STRAVA_CLIENT_ID|STRAVA_CLIENT_SECRET|MAPTILER_KEY)=' .env
@@ -55,8 +61,18 @@ else
     echo "WEB_APP_URL=/"
     echo "COOKIE_SECRET=$(openssl rand -hex 32)"
     echo "ALLOWED_ATHLETE_IDS=$ALLOWED_IDS"
+    echo "ADMIN_ATHLETE_ID=$ADMIN_ID"
   } | ssh "$HOST" "cat > $APP_DIR/.env && chmod 600 $APP_DIR/.env && echo .env written"
 fi
+
+# The SMTP alert settings (mailbox password!) live only in the local .env and
+# the VPS one: copy each key over when it is set here and missing there.
+for key in $OPTIONAL_KEYS; do
+  line=$(grep -m1 "^$key=." .env 2>/dev/null || true) # '=.' skips empty values
+  [ -n "$line" ] || continue
+  ssh "$HOST" "grep -q '^$key=' $APP_DIR/.env" && continue
+  printf '%s\n' "$line" | ssh "$HOST" "cat >> $APP_DIR/.env && echo '$key added'"
+done
 
 echo "== Caddyfile =="
 if ssh "$HOST" 'test -f /etc/caddy/Caddyfile && grep -q reverse_proxy /etc/caddy/Caddyfile && ! grep -q basic_auth /etc/caddy/Caddyfile'; then
