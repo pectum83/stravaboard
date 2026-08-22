@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { upsertActivity, type ActivityRow } from '../repositories/activities.repo.js'
+import { getActivity, upsertActivity, type ActivityRow } from '../repositories/activities.repo.js'
 import type { StravaStreamSet } from '../strava/types.js'
 import { connectAthlete, session, testApp, testDb } from './helpers.js'
 import { makeActivity, stravaStub } from './stravaStub.js'
@@ -162,21 +162,57 @@ describe('admin activity import', () => {
     expect(res.json().error).toMatch(/no heart rate/)
   })
 
-  it('reports a second import of the same activity as a duplicate', async () => {
-    const { app, cookies } = await importApp()
+  it('adopts the earlier copy when Strava reports a duplicate', async () => {
+    const { app, db, cookies } = await importApp()
     const payload = { activityId: SOURCE_ID }
-    expect(
-      (await app.inject({ method: 'POST', url: '/api/admin/import-activity', cookies, payload }))
-        .statusCode,
-    ).toBe(200)
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/admin/import-activity',
+      cookies,
+      payload,
+    })
+    expect(first.statusCode).toBe(200)
+
     const again = await app.inject({
       method: 'POST',
       url: '/api/admin/import-activity',
       cookies,
       payload,
     })
-    expect(again.statusCode).toBe(409)
-    expect(again.json().error).toMatch(/duplicate of activity/)
+    expect(again.statusCode).toBe(200)
+    expect(again.json()).toMatchObject({
+      activityId: first.json().activityId,
+      alreadyExisted: true,
+    })
+    // Still exactly one copy on my account.
+    expect(getActivity(db, first.json().activityId as number)?.athleteId).toBe(ADMIN)
+  })
+
+  it('409s a duplicate Strava will not name', async () => {
+    const { app, cookies } = await importApp({ uploadError: 'duplicate of another activity' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/import-activity',
+      cookies,
+      payload: { activityId: SOURCE_ID },
+    })
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('stores the new activity locally, which a date-keyed sync would never find', async () => {
+    const { app, db, cookies } = await importApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/import-activity',
+      cookies,
+      payload: { activityId: SOURCE_ID },
+    })
+    const newId = res.json().activityId as number
+    expect(getActivity(db, newId)?.athleteId).toBe(ADMIN)
+
+    // What actually matters: it shows up in my list right away.
+    const list = await app.inject({ method: 'GET', url: '/api/activities', cookies })
+    expect((list.json().activities as { id: number }[]).map((a) => a.id)).toContain(newId)
   })
 
   it('surfaces an upload rejected by Strava as a bad gateway', async () => {

@@ -126,7 +126,7 @@ export class SyncService {
     if (!existing) throw new NotFoundError()
     const athleteId = existing.athleteId
     const detail = await this.client.getActivity(athleteId, id)
-    upsertActivitySummary(this.db, toRow(athleteId, detail))
+    upsertActivitySummary(this.db, toActivityRow(athleteId, detail))
     try {
       const set = await this.client.getStreams(athleteId, id)
       this.storeStreams(id, toStoredStreams(set), this.paramsFor(athleteId))
@@ -275,7 +275,7 @@ export class SyncService {
     for (let page = 1; ; page++) {
       const batch = await this.client.listActivities(athleteId, after, page, this.perPage)
       for (const a of batch) {
-        upsertActivitySummary(this.db, toRow(athleteId, a))
+        upsertActivitySummary(this.db, toActivityRow(athleteId, a))
         st.fetched++
       }
       if (batch.length < this.perPage) return
@@ -370,7 +370,8 @@ export class SyncService {
   }
 }
 
-function toRow(athleteId: number, a: StravaSummaryActivity): ActivityRow {
+/** Strava summary → stored row, streams still to fetch. Shared with the import. */
+export function toActivityRow(athleteId: number, a: StravaSummaryActivity): ActivityRow {
   return {
     id: a.id,
     athleteId,

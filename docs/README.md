@@ -197,8 +197,11 @@ recording is rebuilt as a TCX file and uploaded to your account, so Strava
 recomputes your Relative Effort and fitness curve with your own heart-rate
 zones. It takes a few seconds; the panel then links to the new activity.
 
-Their copy stays on their account (Strava's API cannot delete it), and importing
-the same activity twice is refused as a duplicate. If you already created your
+The imported activity appears in stravaBoard immediately — it is stored on the
+spot, because the regular sync only asks Strava for activities _started_ after
+the last one it knows, and an import is backdated by definition. Their copy
+stays on their account (Strava's API cannot delete it); importing the same
+activity twice simply points you back at the copy you already have. If you already created your
 own copy of that day by hand, delete it on strava.com first — heart rate cannot
 be added to an existing activity.
 

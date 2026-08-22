@@ -87,7 +87,7 @@ list (date / name / sport · km · D+ · ❤️; rows without heart rate are `.u
 and their button disabled), a name field pre-filled from the source, and an
 "Import onto my account" button calling `api.importActivity()`. Success renders
 `.imported` with a link to the new Strava activity and its average/max heart
-rate; failures show the server's own message — `request()` in `api/client.ts`
+rate ("Already on your account:" when `alreadyExisted`); failures show the server's own message — `request()` in `api/client.ts`
 now prefers the JSON body's `error` field over the bare status line.
 
 ## DashboardPage

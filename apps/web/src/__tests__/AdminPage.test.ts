@@ -181,6 +181,7 @@ describe('AdminPage', () => {
         name: 'Activity 19790883454',
         averageHeartrate: 130,
         maxHeartrate: 149,
+        alreadyExisted: false,
       })
       const wrapper = mount(AdminPage)
       await flushPromises()

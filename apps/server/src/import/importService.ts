@@ -1,10 +1,11 @@
 import { buildTcx, type TcxSport, type TcxStreams } from '@stravaboard/shared'
 import type { Config } from '../config.js'
 import type { Db } from '../db/client.js'
-import { getActivity } from '../repositories/activities.repo.js'
+import { getActivity, upsertActivitySummary } from '../repositories/activities.repo.js'
 import { getAthlete } from '../repositories/athletes.repo.js'
 import type { StravaClient } from '../strava/client.js'
 import { ensureFreshToken, type FetchLike } from '../strava/oauth.js'
+import { toActivityRow } from '../sync/syncService.js'
 import type { StravaStreamSet, StravaSummaryActivity, StravaUpload } from '../strava/types.js'
 
 /**
@@ -36,6 +37,8 @@ export class ImportError extends Error {
   constructor(
     readonly code: ImportErrorCode,
     message: string,
+    /** For 'duplicate': the activity Strava says this file already became. */
+    readonly duplicateActivityId?: number,
   ) {
     super(message)
   }
@@ -87,6 +90,8 @@ export interface ImportResult {
   /** Null on a dry run. */
   activityId: number | null
   url: string | null
+  /** True when Strava recognised the file as an earlier import of the same activity. */
+  alreadyExisted: boolean
 }
 
 export async function importActivity(
@@ -127,32 +132,54 @@ export async function importActivity(
     streams,
   })
   log(`built a ${tcx.length}-byte TCX from ${summary.points} points`)
-  if (request.dryRun === true) return { summary, tcx, activityId: null, url: null }
+  if (request.dryRun === true) {
+    return { summary, tcx, activityId: null, url: null, alreadyExisted: false }
+  }
 
   const name = request.name?.trim() || activity.name
   const description = request.description ?? defaultDescription(db, sourceAthleteId, activity.id)
-  const uploadId = await postUpload(deps, request.targetAthleteId, tcx, {
-    name,
-    description,
-    externalId: externalIdFor(activity.id),
-    commute: activity.commute === true,
-    trainer: activity.trainer === true,
-  })
-  log(`upload ${uploadId} accepted, waiting for Strava to process it`)
-  const activityId = await awaitUpload(deps, request.targetAthleteId, uploadId)
+  let activityId: number
+  let alreadyExisted = false
+  let created: StravaSummaryActivity
+  try {
+    const uploadId = await postUpload(deps, request.targetAthleteId, tcx, {
+      name,
+      description,
+      externalId: externalIdFor(activity.id),
+      commute: activity.commute === true,
+      trainer: activity.trainer === true,
+    })
+    log(`upload ${uploadId} accepted, waiting for Strava to process it`)
+    activityId = await awaitUpload(deps, request.targetAthleteId, uploadId)
+    // TCX only knows Running/Biking/Other — never a Strava sport type — so the
+    // upload always lands on the wrong type and needs this correction. A PUT
+    // combining name and sport_type can drop the type (see SyncService.editActivity),
+    // hence a type-only call: the name was already set by the upload.
+    created = await client.updateActivity(request.targetAthleteId, activityId, {
+      sport_type: activity.sport_type,
+    })
+  } catch (err) {
+    // Re-importing is not a failure: the stable external_id means Strava
+    // already turned this activity into that one. Adopt it instead.
+    if (!(err instanceof ImportError) || err.duplicateActivityId === undefined) throw err
+    activityId = err.duplicateActivityId
+    alreadyExisted = true
+    created = await client.getActivity(request.targetAthleteId, activityId)
+    log(`already imported earlier as activity ${activityId}`)
+  }
 
-  // TCX only knows Running/Biking/Other — never a Strava sport type — so the
-  // upload always lands on the wrong type and needs this correction. A PUT
-  // combining name and sport_type can drop the type (see SyncService.editActivity),
-  // hence a type-only call: the name was already set by the upload.
-  await client.updateActivity(request.targetAthleteId, activityId, {
-    sport_type: activity.sport_type,
-  })
+  // Store it locally right away: the incremental sync pages Strava with
+  // `?after=<newest start date>`, so an activity uploaded today but STARTED
+  // weeks ago is never returned and would stay invisible in stravaBoard.
+  // 'pending' streams make the next sync pass fetch its streams and metrics.
+  upsertActivitySummary(db, toActivityRow(request.targetAthleteId, created))
+
   return {
     summary,
     tcx,
     activityId,
     url: `https://www.strava.com/activities/${activityId}`,
+    alreadyExisted,
   }
 }
 
@@ -265,9 +292,32 @@ async function awaitUpload(deps: ImportDeps, athleteId: number, uploadId: number
   }
 }
 
+/**
+ * Strava's upload errors are meant for a web page: they carry markup and HTML
+ * entities ("duplicate of &lt;a href='/activities/42'&gt;Rando&lt;/a&gt;").
+ * Turn one into a plain sentence, keeping the activity id when there is one.
+ */
 function uploadError(message: string): ImportError {
-  const duplicate = /duplicate/i.test(message)
-  return new ImportError(duplicate ? 'duplicate' : 'upload-failed', message)
+  const duplicateId = Number(/\/activities\/(\d+)/.exec(message)?.[1])
+  if (/duplicate/i.test(message)) {
+    return Number.isInteger(duplicateId)
+      ? new ImportError('duplicate', `already imported as activity ${duplicateId}`, duplicateId)
+      : new ImportError('duplicate', plainText(message))
+  }
+  return new ImportError('upload-failed', plainText(message))
+}
+
+/** Strip tags and decode the entities Strava actually emits. */
+function plainText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&([a-zA-Z])(?:acute|grave|circ|uml|tilde|cedil);/g, '$1')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim()
 }
 
 async function uploadRequest<T>(

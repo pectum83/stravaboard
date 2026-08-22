@@ -55,13 +55,15 @@ export interface AdminRouteOptions {
   /** Time seams of the upload polling loop; injected in tests. */
   nowMs?: () => number
   sleep?: (ms: number) => Promise<void>
+  /** Kicks a sync so an imported activity gets its streams and metrics. */
+  startSync: () => void
 }
 
 export function registerAdminRoutes(
   app: FastifyInstance,
   config: Config,
   db: Db,
-  { exit, client, fetchImpl, nowMs, sleep }: AdminRouteOptions,
+  { exit, client, fetchImpl, nowMs, sleep, startSync }: AdminRouteOptions,
 ): void {
   /** The session guard already answers 401; only the owner gets past this. */
   function denyNonAdmin(req: FastifyRequest, reply: FastifyReply): boolean {
@@ -146,12 +148,15 @@ export function registerAdminRoutes(
           description,
         },
       )
+      // The import stored the activity as pending; this fetches its streams.
+      startSync()
       return {
         activityId: result.activityId,
         url: result.url,
         name: result.summary.name,
         averageHeartrate: result.summary.averageHeartrate,
         maxHeartrate: result.summary.maxHeartrate,
+        alreadyExisted: result.alreadyExisted,
       }
     } catch (err) {
       if (err instanceof ImportError) {

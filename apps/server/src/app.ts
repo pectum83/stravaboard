@@ -76,6 +76,7 @@ export async function buildApp({
     // the sync's time seams so tests never wait on a real timer.
     nowMs: syncOptions?.nowMs,
     sleep: syncOptions?.sleep,
+    startSync: () => sync.start(),
     exit:
       exit ??
       (() => {

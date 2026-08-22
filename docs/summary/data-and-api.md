@@ -217,9 +217,10 @@ ADMIN_ATHLETE_ID`** (the session guard already answers 401):
   `rawSummary.has_heartrate`), both feeding the import picker;
   `POST /admin/import-activity` zod `{activityId, sourceAthleteId?, name?,
 description?}` → `ImportedActivity {activityId, url, name, averageHeartrate,
-maxHeartrate}` — see the import service below. Statuses: 400 invalid /
-  no streams / no heart rate, 404 unknown source, **409 duplicate**, 502 upload
-  refused, 504 Strava still processing, 429 `resumeAt`, 403 missing
+maxHeartrate, alreadyExisted}` — see the import service below; on success it
+  stores the activity locally and kicks a sync. Statuses: 400 invalid / no
+  streams / no heart rate, 404 unknown source, 409 duplicate Strava won't name,
+  502 upload refused, 504 still processing, 429 `resumeAt`, 403 missing
   `activity:write`.
 - `GET /activities/:id/streams` → `ActivityStreams` (shared type:
   `{time, distance, altitude|null, latlng|null}`); 404 with `streamsStatus`
@@ -251,9 +252,22 @@ heartrate,cadence')` — the keys argument added for this; the sync keeps
 6. Polls `GET /uploads/{id}` every 2 s (90 s cap → `'upload-timeout'`).
 7. Restores the real `sport_type` with a **type-only** `updateActivity` (TCX
    can't express Hike, and a combined name+type PUT can drop the type).
+8. **`upsertActivitySummary` stores the result locally as 'pending'** and the
+   route then calls `startSync()`. Non-negotiable: `fetchNewSummaries` pages
+   `?after=<newest start date>`, so an activity uploaded today but STARTED weeks
+   ago is never returned by Strava — without this write it would stay invisible
+   in stravaBoard forever.
+9. A repeat import is **not** an error: Strava answers "duplicate of
+   `<a href='/activities/N'>…</a>`", the id is parsed out
+   (`ImportError.duplicateActivityId`), the existing activity is adopted
+   (fetched, stored locally) and the result carries `alreadyExisted: true`.
+   Only an unparseable duplicate message stays a 409. Strava's upload errors are
+   HTML meant for its web page; `plainText()` strips tags and entities.
 
 `ImportError.code` ∈ `unknown-source | no-streams | no-heartrate | duplicate |
 upload-failed | upload-timeout`; `routes/admin.ts` maps each to a status.
+`toActivityRow(athleteId, summary)` is exported by `syncService.ts` and shared
+with the import.
 CLI façade: `apps/server/src/scripts/importActivity.ts` (see architecture.md).
 
 ## Strava client & sync — `apps/server/src/strava/`, `src/sync/syncService.ts`

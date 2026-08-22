@@ -213,6 +213,8 @@ export interface ImportedActivity {
   name: string
   averageHeartrate: number | null
   maxHeartrate: number | null
+  /** True when this activity had already been imported: Strava kept the first copy. */
+  alreadyExisted: boolean
 }
 
 /** One entry of the sign-in allowlist, as shown on the admin page. */

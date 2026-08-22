@@ -81,6 +81,12 @@ export function stravaStub(opts: StravaStubOptions = {}) {
   /** external_id → activity it created, so a re-upload answers "duplicate". */
   const uploadedExternalIds = new Map<string, number>()
   const pending = new Map<number, { activityId: number; pollsLeft: number }>()
+  /**
+   * Activities born from an upload. The stub has no per-athlete feed, so they
+   * stay out of /athlete/activities: otherwise every athlete's sync would claim
+   * the copy that belongs to the account that uploaded it.
+   */
+  const uploaded = new Set<number>()
   let remaining429 = opts.rateLimit429Count ?? 0
   let remainingDroppedSportTypes = opts.dropSportTypeUpdateCount ?? 0
   let nextUploadId = 1
@@ -108,7 +114,9 @@ export function stravaStub(opts: StravaStubOptions = {}) {
       const after = Number(url.searchParams.get('after') ?? 0)
       const page = Number(url.searchParams.get('page') ?? 1)
       const perPage = Number(url.searchParams.get('per_page') ?? 200)
-      const matching = activities.filter((a) => Date.parse(a.start_date) / 1000 > after)
+      const matching = activities.filter(
+        (a) => Date.parse(a.start_date) / 1000 > after && !uploaded.has(a.id),
+      )
       const start = (page - 1) * perPage
       return Response.json(matching.slice(start, start + perPage))
     }
@@ -124,7 +132,8 @@ export function stravaStub(opts: StravaStubOptions = {}) {
         return Response.json({
           id,
           external_id: externalId,
-          error: `duplicate of activity ${duplicateOf}`,
+          // Strava's own wording: HTML meant for its web page.
+          error: `duplicate of <a href='/activities/${duplicateOf}' target='_blank'>Randonn&eacute;e le matin</a>`,
           status: 'error',
           activity_id: null,
         })
@@ -149,6 +158,7 @@ export function stravaStub(opts: StravaStubOptions = {}) {
       })
       const activityId = nextActivityId++
       uploadedExternalIds.set(externalId, activityId)
+      uploaded.add(activityId)
       // The activity only exists once processing ends; register it now so the
       // sport-type correction that follows the poll finds it.
       activities.push(makeActivity(activityId, new Date().toISOString(), { sport_type: 'Workout' }))

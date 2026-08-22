@@ -61,7 +61,7 @@ const db = openDb(config.DATABASE_PATH)
 const client = new StravaClient(config, db)
 
 try {
-  const { summary, tcx, activityId, url } = await importActivity(
+  const { summary, tcx, activityId, url, alreadyExisted } = await importActivity(
     { config, db, client, log: (msg) => console.log(msg) },
     {
       sourceActivityId,
@@ -89,7 +89,12 @@ try {
     writeFileSync(out, tcx)
     console.log(`dry run: wrote ${out}, nothing sent to Strava`)
   } else {
-    console.log(`imported as activity ${activityId}: ${url}`)
+    console.log(
+      alreadyExisted
+        ? `already on the target account as activity ${activityId}: ${url}`
+        : `imported as activity ${activityId}: ${url}`,
+    )
+    console.log('stored locally as pending — the next sync fetches its streams')
   }
 } catch (err) {
   console.error(err instanceof ImportError ? `${err.code}: ${err.message}` : err)

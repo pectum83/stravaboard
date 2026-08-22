@@ -317,7 +317,7 @@ onMounted(async () => {
         </template>
 
         <p v-if="imported" class="imported">
-          Imported as
+          {{ imported.alreadyExisted ? 'Already on your account:' : 'Imported as' }}
           <a :href="imported.url" target="_blank" rel="noopener">{{ imported.name }}</a>
           <span v-if="imported.averageHeartrate !== null">
             — {{ imported.averageHeartrate }} bpm average, {{ imported.maxHeartrate }} bpm max
