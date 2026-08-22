@@ -10,7 +10,17 @@ export default defineConfig({
     baseURL: `http://localhost:${APP_PORT}`,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: /import\.spec\.ts/ },
+    {
+      // The import mutates the shared seeded database, so it goes last:
+      // `dependencies` makes this project wait for the whole suite above.
+      name: 'import',
+      use: { browserName: 'chromium' },
+      testMatch: /import\.spec\.ts/,
+      dependencies: ['chromium'],
+    },
+  ],
   webServer: [
     {
       command: 'pnpm exec tsx stravaStubServer.ts',

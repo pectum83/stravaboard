@@ -36,6 +36,13 @@
   failures. New component → mounted component test.
 - Map assertions in e2e must tolerate WebGL-less environments (assert canvas
   OR the "Map unavailable" fallback).
+- **The import e2e runs last, in its own Playwright project.** All specs share
+  ONE seeded database and ONE server (`serveSeeded.ts`), and an import writes a
+  new activity into it — a Hike, which additionally flips the list's default
+  sport filter (`DEFAULT_SPORT_TYPE`) for every later test. `import.spec.ts` is
+  therefore excluded from the `chromium` project (`testIgnore`) and run by an
+  `import` project with `dependencies: ['chromium']`. Any future spec that
+  mutates the seeded athlete's activities belongs there too.
 - **e2e never clicks "Restart the server"** on the admin page — it would kill
   the server under test. `POST /api/admin/restart` is covered by an API test
   with an injected `exit` (`testApp(..., { exit })`); `testApp` also takes a
