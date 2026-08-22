@@ -90,8 +90,8 @@ export function buildTcx(input: TcxInput): string {
     const point = streams.latlng?.[i]
     if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) {
       lines.push('            <Position>')
-      lines.push(`              <LatitudeDegrees>${num(point[0])}</LatitudeDegrees>`)
-      lines.push(`              <LongitudeDegrees>${num(point[1])}</LongitudeDegrees>`)
+      lines.push(`              <LatitudeDegrees>${coord(point[0])}</LatitudeDegrees>`)
+      lines.push(`              <LongitudeDegrees>${coord(point[1])}</LongitudeDegrees>`)
       lines.push('            </Position>')
     }
     const altitude = streams.altitude?.[i]
@@ -129,6 +129,14 @@ function isoAt(startMs: number, offsetS: number): string {
 /** At most one decimal place, no trailing `.0` — TCX floats stay short. */
 function num(value: number): string {
   return String(Math.round(value * 10) / 10)
+}
+
+/**
+ * Degrees keep seven decimals — about a centimetre. Rounding them like the
+ * other floats would flatten the whole track onto a handful of points.
+ */
+function coord(value: number): string {
+  return String(Math.round(value * 1e7) / 1e7)
 }
 
 function round(value: number): number {

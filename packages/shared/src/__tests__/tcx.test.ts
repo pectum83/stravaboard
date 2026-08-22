@@ -13,11 +13,11 @@ function input(overrides: Partial<TcxInput> = {}): TcxInput {
       distance: [0, 30, 60, 95, 123.4],
       altitude: [1000, 1005, 1011.25, 1018, 1024],
       latlng: [
-        [45.1, 6.1],
-        [45.2, 6.2],
-        [45.3, 6.3],
-        [45.4, 6.4],
-        [45.5, 6.5],
+        [44.8123456, 6.5012345],
+        [44.8124567, 6.5013456],
+        [44.8125678, 6.5014567],
+        [44.8126789, 6.5015678],
+        [44.812789, 6.5016789],
       ],
       heartrate: [88, 110, 132.4, 145, 151],
       cadence: [0, 60, 62, 64, 300],
@@ -64,8 +64,10 @@ describe('buildTcx', () => {
 
   it('keeps positions, altitude and distance from their streams', () => {
     const xml = buildTcx(input())
-    expect(xml).toContain('<LatitudeDegrees>45.1</LatitudeDegrees>')
-    expect(xml).toContain('<LongitudeDegrees>6.5</LongitudeDegrees>')
+    // Full precision: rounding degrees like the other floats would collapse
+    // the track to a handful of points.
+    expect(xml).toContain('<LatitudeDegrees>44.8123456</LatitudeDegrees>')
+    expect(xml).toContain('<LongitudeDegrees>6.5016789</LongitudeDegrees>')
     expect(xml).toContain('<AltitudeMeters>1011.3</AltitudeMeters>') // 1011.25 → one decimal
     expect(xml).toContain('<DistanceMeters>123.4</DistanceMeters>')
   })
