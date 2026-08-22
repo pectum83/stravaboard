@@ -18,12 +18,34 @@ export interface StravaSummaryActivity {
   moving_time: number
   elapsed_time: number
   total_elevation_gain: number
+  /** Detail-only fields, used when re-uploading an activity to another account. */
+  calories?: number
+  commute?: boolean
+  trainer?: boolean
+  has_heartrate?: boolean
 }
 
-/** Streams response with key_by_type=true. */
+/** Response of POST /uploads and GET /uploads/{id}. */
+export interface StravaUpload {
+  id: number
+  external_id: string | null
+  /** Human-readable failure ("duplicate of activity 123"); null while healthy. */
+  error: string | null
+  status: string
+  /** Set once Strava finished processing the file. */
+  activity_id: number | null
+}
+
+/**
+ * Streams response with key_by_type=true. Only `time`/`distance`/`altitude`/
+ * `latlng` are stored; heart rate and cadence are fetched on demand by the
+ * import service (they go into the uploaded TCX, never into the database).
+ */
 export interface StravaStreamSet {
   time?: { data: number[] }
   distance?: { data: number[] }
   altitude?: { data: number[] }
   latlng?: { data: [number, number][] }
+  heartrate?: { data: number[] }
+  cadence?: { data: number[] }
 }

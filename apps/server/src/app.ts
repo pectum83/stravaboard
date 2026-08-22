@@ -70,6 +70,12 @@ export async function buildApp({
   registerSyncRoutes(app, sync)
   registerActivityRoutes(app, db, sync)
   registerAdminRoutes(app, config, db, {
+    client,
+    fetchImpl,
+    // The activity import polls Strava while an upload is processed; it shares
+    // the sync's time seams so tests never wait on a real timer.
+    nowMs: syncOptions?.nowMs,
+    sleep: syncOptions?.sleep,
     exit:
       exit ??
       (() => {

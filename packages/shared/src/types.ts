@@ -185,6 +185,36 @@ export interface AuthStatus {
   isAdmin?: boolean
 }
 
+/** A connected athlete, as offered by the admin import picker. */
+export interface AdminAthlete {
+  id: number
+  name: string
+  /** Activities already synced for that athlete. */
+  activityCount: number
+}
+
+/** One activity of another athlete that the admin may copy onto their account. */
+export interface ImportCandidate {
+  id: number
+  name: string
+  sportType: string
+  /** ISO 8601 UTC. */
+  startDate: string
+  distanceM: number
+  totalElevationGainM: number
+  /** Whether the source recorded heart rate — the whole reason to import it. */
+  hasHeartrate: boolean
+}
+
+/** Outcome of an import: the new activity on the admin's own account. */
+export interface ImportedActivity {
+  activityId: number
+  url: string
+  name: string
+  averageHeartrate: number | null
+  maxHeartrate: number | null
+}
+
 /** One entry of the sign-in allowlist, as shown on the admin page. */
 export interface AllowedAthlete {
   /** Strava athlete id allowed to sign in. */

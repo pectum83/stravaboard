@@ -209,15 +209,59 @@ ADMIN_ATHLETE_ID`** (the session guard already answers 401):
   (never lock the owner out), 404 when absent;
   `POST /admin/restart` → 202 `{restarting:true}` then exits the process 100 ms
   later (systemd `Restart=always` brings it back); the exit function is injected
-  so tests never kill the runner.
+  so tests never kill the runner;
+  `GET /admin/athletes` → `{athletes: AdminAthlete[]}` (every connected athlete +
+  their activity count) and
+  `GET /admin/import-candidates?athleteId&limit` → `{activities: ImportCandidate[]}`
+  (that athlete's local rows, newest first, `hasHeartrate` read from
+  `rawSummary.has_heartrate`), both feeding the import picker;
+  `POST /admin/import-activity` zod `{activityId, sourceAthleteId?, name?,
+description?}` → `ImportedActivity {activityId, url, name, averageHeartrate,
+maxHeartrate}` — see the import service below. Statuses: 400 invalid /
+  no streams / no heart rate, 404 unknown source, **409 duplicate**, 502 upload
+  refused, 504 Strava still processing, 429 `resumeAt`, 403 missing
+  `activity:write`.
 - `GET /activities/:id/streams` → `ActivityStreams` (shared type:
   `{time, distance, altitude|null, latlng|null}`); 404 with `streamsStatus`
   when absent.
 
+## Activity import — `apps/server/src/import/importService.ts`
+
+Copies one athlete's activity onto another athlete's account, heart rate
+included (the "I wore my son's watch" case). Strava cannot attach streams to an
+existing activity, so the only route is a file upload.
+
+`importActivity(deps, {sourceActivityId, sourceAthleteId?, targetAthleteId,
+name?, description?, dryRun?, allowMissingHeartrate?})` →
+`{summary, tcx, activityId, url}`:
+
+1. Source athlete defaults to the local row's owner (`getActivity`); without a
+   row, the caller must pass it (`ImportError 'unknown-source'`).
+2. `client.getActivity` + `client.getStreams(…, 'time,distance,altitude,latlng,
+heartrate,cadence')` — the keys argument added for this; the sync keeps
+   `SYNC_STREAM_KEYS` and stores nothing new.
+3. No heart-rate stream → `ImportError 'no-heartrate'` (that is the whole point).
+4. `buildTcx` (**`@stravaboard/shared`**, pure + unit-tested): single lap,
+   `Sport` = Running/Biking/Other only, trackpoint children in schema order
+   (Time, Position, AltitudeMeters, DistanceMeters, HeartRateBpm, Cadence).
+5. `POST /uploads` **multipart** (`FormData`; StravaClient's request helper is
+   JSON-only, so this is a raw fetch with `ensureFreshToken` + the shared
+   `RateLimiter`), `external_id = stravaboard-import-<sourceActivityId>` →
+   **a repeat import comes back as "duplicate of activity N"**, never a second copy.
+6. Polls `GET /uploads/{id}` every 2 s (90 s cap → `'upload-timeout'`).
+7. Restores the real `sport_type` with a **type-only** `updateActivity` (TCX
+   can't express Hike, and a combined name+type PUT can drop the type).
+
+`ImportError.code` ∈ `unknown-source | no-streams | no-heartrate | duplicate |
+upload-failed | upload-timeout`; `routes/admin.ts` maps each to a status.
+CLI façade: `apps/server/src/scripts/importActivity.ts` (see architecture.md).
+
 ## Strava client & sync — `apps/server/src/strava/`, `src/sync/syncService.ts`
 
-- `StravaClient.getStreams` requests `keys=time,distance,altitude,latlng`
-  (`key_by_type=true`). Add new stream kinds here + `strava/types.ts`
+- `StravaClient.getStreams` requests `keys=SYNC_STREAM_KEYS`
+  (`time,distance,altitude,latlng`, `key_by_type=true`); the optional third
+  argument overrides them (the import asks for heart rate and cadence, which are
+  never stored). Add new stream kinds here + `strava/types.ts`
   (`StravaStreamSet`) + `toStoredStreams()` in syncService + schema/migration +
   streams.repo + shared `ActivityStreams`.
 - `StravaClient` methods all take `athleteId` first (token refresh is

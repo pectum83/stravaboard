@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { AllowedAthlete } from '@stravaboard/shared'
+import type {
+  AdminAthlete,
+  AllowedAthlete,
+  ImportCandidate,
+  ImportedActivity,
+} from '@stravaboard/shared'
 import { api } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
-const { connected, isAdmin } = storeToRefs(authStore)
+const { connected, isAdmin, athleteId } = storeToRefs(authStore)
 
 const athletes = ref<AllowedAthlete[]>([])
 const loading = ref(true)
@@ -19,6 +24,20 @@ const addError = ref<string | null>(null)
 
 const restarting = ref(false)
 const restartError = ref<string | null>(null)
+
+/** Activity import: copy someone else's recording onto my own account. */
+const sources = ref<AdminAthlete[]>([])
+const sourceId = ref<number | null>(null)
+const candidates = ref<ImportCandidate[]>([])
+const candidatesLoading = ref(false)
+const selectedId = ref<number | null>(null)
+const importName = ref('')
+const importing = ref(false)
+const importError = ref<string | null>(null)
+const imported = ref<ImportedActivity | null>(null)
+
+/** Everyone connected except me — importing from myself makes no sense. */
+const otherAthletes = computed(() => sources.value.filter((a) => a.id !== athleteId.value))
 
 /** null while the auth status is in flight, so the refusal never flashes. */
 const allowed = computed(() => (connected.value === null ? null : connected.value && isAdmin.value))
@@ -102,10 +121,71 @@ async function restartServer(): Promise<void> {
   }
 }
 
+async function loadSources(): Promise<void> {
+  try {
+    sources.value = (await api.adminAthletes()).athletes
+    sourceId.value = otherAthletes.value[0]?.id ?? null
+    if (sourceId.value !== null) await loadCandidates()
+  } catch (err) {
+    importError.value = message(err)
+  }
+}
+
+async function loadCandidates(): Promise<void> {
+  if (sourceId.value === null) return
+  candidatesLoading.value = true
+  selectedId.value = null
+  imported.value = null
+  importError.value = null
+  try {
+    candidates.value = (await api.importCandidates(sourceId.value)).activities
+  } catch (err) {
+    importError.value = message(err)
+    candidates.value = []
+  } finally {
+    candidatesLoading.value = false
+  }
+}
+
+function selectCandidate(candidate: ImportCandidate): void {
+  if (!candidate.hasHeartrate) return
+  selectedId.value = candidate.id
+  importName.value = candidate.name
+  imported.value = null
+  importError.value = null
+}
+
+async function runImport(): Promise<void> {
+  if (importing.value || selectedId.value === null) return
+  importing.value = true
+  importError.value = null
+  imported.value = null
+  try {
+    imported.value = await api.importActivity({
+      activityId: selectedId.value,
+      ...(importName.value.trim() ? { name: importName.value.trim() } : {}),
+    })
+  } catch (err) {
+    importError.value = message(err)
+  } finally {
+    importing.value = false
+  }
+}
+
+function day(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+function km(m: number): string {
+  return `${(m / 1000).toFixed(1)} km`
+}
+
 onMounted(async () => {
   await authStore.load()
-  if (allowed.value) await loadAllowlist()
-  else loading.value = false
+  if (allowed.value) {
+    await loadAllowlist()
+    await loadSources()
+  } else loading.value = false
 })
 </script>
 
@@ -179,6 +259,71 @@ onMounted(async () => {
           </button>
         </form>
         <p v-if="addError" class="error">{{ addError }}</p>
+      </section>
+
+      <section class="panel">
+        <h2>Import an activity from another account</h2>
+        <p class="muted">
+          Borrowed someone else's watch? Copy their recording — heart rate included — onto your own
+          account, so Strava scores the effort and your fitness curve where it belongs. Their copy
+          stays untouched.
+        </p>
+
+        <label class="field">
+          <span>From</span>
+          <select v-model.number="sourceId" @change="loadCandidates">
+            <option v-for="athlete in otherAthletes" :key="athlete.id" :value="athlete.id">
+              {{ athlete.name }} ({{ athlete.activityCount }} activities)
+            </option>
+          </select>
+        </label>
+
+        <p v-if="otherAthletes.length === 0" class="muted">
+          Nobody else has connected their account yet.
+        </p>
+        <p v-else-if="candidatesLoading" class="muted">Loading…</p>
+        <ul v-else class="candidates">
+          <li
+            v-for="candidate in candidates"
+            :key="candidate.id"
+            :class="{ selected: candidate.id === selectedId, unusable: !candidate.hasHeartrate }"
+          >
+            <button
+              type="button"
+              :disabled="!candidate.hasHeartrate"
+              :title="candidate.hasHeartrate ? '' : 'No heart rate recorded — nothing to import'"
+              @click="selectCandidate(candidate)"
+            >
+              <span class="day">{{ day(candidate.startDate) }}</span>
+              <span class="title">{{ candidate.name }}</span>
+              <span class="figures">
+                {{ candidate.sportType }} · {{ km(candidate.distanceM) }} · D+
+                {{ Math.round(candidate.totalElevationGainM) }} m
+                <span v-if="candidate.hasHeartrate" aria-label="has heart rate">❤️</span>
+              </span>
+            </button>
+          </li>
+          <li v-if="candidates.length === 0" class="muted">No synced activity for this athlete.</li>
+        </ul>
+
+        <template v-if="selectedId !== null">
+          <label class="field">
+            <span>Name</span>
+            <input v-model="importName" type="text" maxlength="255" aria-label="Activity name" />
+          </label>
+          <button type="button" class="import" :disabled="importing" @click="runImport">
+            {{ importing ? 'Uploading to Strava…' : 'Import onto my account' }}
+          </button>
+        </template>
+
+        <p v-if="imported" class="imported">
+          Imported as
+          <a :href="imported.url" target="_blank" rel="noopener">{{ imported.name }}</a>
+          <span v-if="imported.averageHeartrate !== null">
+            — {{ imported.averageHeartrate }} bpm average, {{ imported.maxHeartrate }} bpm max
+          </span>
+        </p>
+        <p v-if="importError" class="error">{{ importError }}</p>
       </section>
 
       <section class="panel">
@@ -273,6 +418,83 @@ h2 {
 .allowlist td {
   padding: 6px 8px 6px 0;
   border-bottom: 1px solid #f0efec;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 0.85rem;
+  color: #52514e;
+}
+
+.field select,
+.field input {
+  padding: 5px 8px;
+  border: 1px solid #c3c2b7;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  background: white;
+}
+
+.field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #f0efec;
+  border-radius: 6px;
+}
+
+.candidates li + li {
+  border-top: 1px solid #f0efec;
+}
+
+.candidates button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+.candidates .selected button {
+  background: #f3f1e7;
+}
+
+.candidates .unusable button {
+  opacity: 0.45;
+}
+
+.candidates .day {
+  color: #898781;
+  font-size: 0.75rem;
+}
+
+.candidates .title {
+  font-weight: 600;
+}
+
+.candidates .figures {
+  color: #898781;
+}
+
+.imported {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: #52514e;
 }
 
 .add {

@@ -17,6 +17,23 @@ export interface StravaStubOptions {
   dropSportTypeUpdateCount?: number
   /** Athlete returned by the token endpoint (OAuth code exchange / refresh). */
   athlete?: { id: number; firstname?: string; lastname?: string }
+  /** Failure message returned by POST /uploads instead of an upload id. */
+  uploadError?: string
+  /** HTTP status returned by POST /uploads instead of 201. */
+  uploadStatus?: number
+  /** Polls of GET /uploads/{id} that answer "still processing" (default 1). */
+  uploadPolls?: number
+}
+
+/** One accepted upload, for assertions on what was sent to Strava. */
+export interface StubUpload {
+  externalId: string
+  name: string
+  description: string
+  commute: string
+  trainer: string
+  dataType: string
+  tcx: string
 }
 
 export function makeActivity(
@@ -60,8 +77,14 @@ export function stravaStub(opts: StravaStubOptions = {}) {
     (a, b) => Date.parse(a.start_date) - Date.parse(b.start_date),
   )
   const requests: string[] = []
+  const uploads: StubUpload[] = []
+  /** external_id → activity it created, so a re-upload answers "duplicate". */
+  const uploadedExternalIds = new Map<string, number>()
+  const pending = new Map<number, { activityId: number; pollsLeft: number }>()
   let remaining429 = opts.rateLimit429Count ?? 0
   let remainingDroppedSportTypes = opts.dropSportTypeUpdateCount ?? 0
+  let nextUploadId = 1
+  let nextActivityId = 990_001
 
   const fetchImpl: FetchLike = async (input, init) => {
     const url = new URL(String(input))
@@ -90,6 +113,78 @@ export function stravaStub(opts: StravaStubOptions = {}) {
       return Response.json(matching.slice(start, start + perPage))
     }
 
+    // Upload API: POST accepts a file, GET polls until Strava built the activity.
+    if (url.pathname.endsWith('/uploads') && init?.method === 'POST') {
+      if (opts.uploadStatus) return new Response('upload refused', { status: opts.uploadStatus })
+      const form = init.body as FormData
+      const externalId = String(form.get('external_id') ?? '')
+      const duplicateOf = uploadedExternalIds.get(externalId)
+      const id = nextUploadId++
+      if (duplicateOf !== undefined) {
+        return Response.json({
+          id,
+          external_id: externalId,
+          error: `duplicate of activity ${duplicateOf}`,
+          status: 'error',
+          activity_id: null,
+        })
+      }
+      if (opts.uploadError) {
+        return Response.json({
+          id,
+          external_id: externalId,
+          error: opts.uploadError,
+          status: 'error',
+          activity_id: null,
+        })
+      }
+      uploads.push({
+        externalId,
+        name: String(form.get('name') ?? ''),
+        description: String(form.get('description') ?? ''),
+        commute: String(form.get('commute') ?? ''),
+        trainer: String(form.get('trainer') ?? ''),
+        dataType: String(form.get('data_type') ?? ''),
+        tcx: await (form.get('file') as Blob).text(),
+      })
+      const activityId = nextActivityId++
+      uploadedExternalIds.set(externalId, activityId)
+      // The activity only exists once processing ends; register it now so the
+      // sport-type correction that follows the poll finds it.
+      activities.push(makeActivity(activityId, new Date().toISOString(), { sport_type: 'Workout' }))
+      pending.set(id, { activityId, pollsLeft: opts.uploadPolls ?? 1 })
+      return Response.json({
+        id,
+        external_id: externalId,
+        error: null,
+        status: 'Your activity is still being processed.',
+        activity_id: null,
+      })
+    }
+
+    const uploadMatch = url.pathname.match(/\/uploads\/(\d+)$/)
+    if (uploadMatch) {
+      const state = pending.get(Number(uploadMatch[1]))
+      if (!state) return new Response('not found', { status: 404 })
+      if (state.pollsLeft > 0) {
+        state.pollsLeft--
+        return Response.json({
+          id: Number(uploadMatch[1]),
+          external_id: null,
+          error: null,
+          status: 'Your activity is still being processed.',
+          activity_id: null,
+        })
+      }
+      return Response.json({
+        id: Number(uploadMatch[1]),
+        external_id: null,
+        error: null,
+        status: 'Your activity is ready.',
+        activity_id: state.activityId,
+      })
+    }
+
     const detailMatch = url.pathname.match(/\/activities\/(\d+)$/)
     if (detailMatch) {
       const activity = activities.find((a) => a.id === Number(detailMatch[1]))
@@ -116,12 +211,15 @@ export function stravaStub(opts: StravaStubOptions = {}) {
         return new Response('not found', { status: 404 })
       }
       const set = opts.streams?.[id] ?? simpleStreams
-      return Response.json(set)
+      // Strava only returns the requested keys; callers ask for different sets.
+      const keys = (url.searchParams.get('keys') ?? '').split(',')
+      const selected = Object.fromEntries(Object.entries(set).filter(([key]) => keys.includes(key)))
+      return Response.json(selected)
     }
 
     void init
     return new Response(`stub: unhandled ${url.pathname}`, { status: 500 })
   }
 
-  return { fetchImpl, requests }
+  return { fetchImpl, requests, uploads }
 }

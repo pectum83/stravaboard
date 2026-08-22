@@ -57,6 +57,14 @@ pnpm e2e            # playwright only
 
 ## Deployment
 
+One-off maintenance script: `apps/server/src/scripts/importActivity.ts` (second
+tsup entry → `dist/scripts/importActivity.js`, shipped by the normal rsync)
+copies another athlete's activity onto an account, heart rate included. Run it
+through `deploy/import-activity.sh --activity <id> [--from|--to <athleteId>]
+[--name|--description] [--dry-run]`, which ssh's into the VPS: only that host's
+database holds every athlete's tokens, and a refresh **rotates** them, so a run
+against a local copy would cost the server its access.
+
 Production: Ubuntu VPS (`ssh crovps`, user ubuntu, passwordless sudo) at
 https://strava.pectum.fr — Caddy (basic auth `cro`, bcrypt in
 /etc/caddy/Caddyfile, auto-HTTPS) → 127.0.0.1:3001 (`HOST` env pins the

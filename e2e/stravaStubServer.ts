@@ -22,6 +22,8 @@ createServer(async (req, res) => {
   res.setHeader('x-ratelimit-usage', '1,1')
 
   const updateMatch = url.pathname.match(/\/activities\/(\d+)$/)
+  const streamsMatch = url.pathname.match(/\/activities\/(\d+)\/streams$/)
+  const uploadMatch = url.pathname.match(/\/uploads\/(\d+)$/)
 
   if (url.pathname === '/health') {
     res.end(JSON.stringify({ ok: true }))
@@ -43,6 +45,61 @@ createServer(async (req, res) => {
         moving_time: 3600,
         elapsed_time: 3600,
         total_elevation_gain: 650,
+      }),
+    )
+  } else if (req.method === 'GET' && streamsMatch) {
+    // Four samples with heart rate — enough for the import to build a TCX.
+    res.end(
+      JSON.stringify({
+        time: { data: [0, 10, 20, 30] },
+        distance: { data: [0, 25, 50, 75] },
+        altitude: { data: [1200, 1210, 1222, 1235] },
+        latlng: {
+          data: [
+            [45.1, 6.05],
+            [45.101, 6.05],
+            [45.102, 6.05],
+            [45.103, 6.05],
+          ],
+        },
+        heartrate: { data: [102, 128, 141, 149] },
+      }),
+    )
+  } else if (req.method === 'POST' && url.pathname.endsWith('/uploads')) {
+    // Accept the file and answer "still processing", as Strava does.
+    await readBody(req)
+    res.end(
+      JSON.stringify({
+        id: 5150,
+        external_id: null,
+        error: null,
+        status: 'Your activity is still being processed.',
+        activity_id: null,
+      }),
+    )
+  } else if (req.method === 'GET' && uploadMatch) {
+    res.end(
+      JSON.stringify({
+        id: Number(uploadMatch[1]),
+        external_id: null,
+        error: null,
+        status: 'Your activity is ready.',
+        activity_id: 990_001,
+      }),
+    )
+  } else if (req.method === 'GET' && updateMatch) {
+    // GetActivity: the detail the import reads before rebuilding the file.
+    res.end(
+      JSON.stringify({
+        id: Number(updateMatch[1]),
+        name: 'Borrowed Watch Hike',
+        sport_type: 'Hike',
+        start_date: '2026-08-18T07:16:56Z',
+        distance: 7752,
+        moving_time: 9000,
+        elapsed_time: 11_000,
+        total_elevation_gain: 659,
+        has_heartrate: true,
       }),
     )
   } else if (url.pathname.endsWith('/athlete/activities')) {

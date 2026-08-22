@@ -1,11 +1,14 @@
 import type {
   ActivitiesPage,
+  AdminAthlete,
   AllowedAthlete,
   ActivityAggregate,
   ActivityBadges,
   ActivityStreams,
   ActivitySummary,
   AuthStatus,
+  ImportCandidate,
+  ImportedActivity,
   Settings,
   SyncStatus,
 } from '@stravaboard/shared'
@@ -15,9 +18,23 @@ export type ActivitySort = 'date' | 'ascentSpeed' | 'elevation' | 'descent' | 'e
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   if (!res.ok) {
-    throw new ApiError(res.status, `${init?.method ?? 'GET'} ${url} → ${res.status}`)
+    throw new ApiError(res.status, await errorMessage(res, url, init))
   }
   return (await res.json()) as T
+}
+
+/**
+ * Prefer the server's own explanation ("duplicate of activity 42") over the
+ * bare status line: several admin actions have failures worth reading.
+ */
+async function errorMessage(res: Response, url: string, init?: RequestInit): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: unknown }
+    if (typeof body.error === 'string' && body.error.length > 0) return body.error
+  } catch {
+    // Not a JSON error payload; fall back to the status line.
+  }
+  return `${init?.method ?? 'GET'} ${url} → ${res.status}`
 }
 
 export class ApiError extends Error {
@@ -106,6 +123,23 @@ export const api = {
     }),
   disallowAthlete: (athleteId: number) =>
     request<{ removed: boolean }>(`/api/admin/allowlist/${athleteId}`, { method: 'DELETE' }),
+  /** Admin only — athletes whose activities can be copied onto my account. */
+  adminAthletes: () => request<{ athletes: AdminAthlete[] }>('/api/admin/athletes'),
+  importCandidates: (athleteId: number) =>
+    request<{ activities: ImportCandidate[] }>(
+      `/api/admin/import-candidates?athleteId=${athleteId}`,
+    ),
+  importActivity: (body: {
+    activityId: number
+    sourceAthleteId?: number
+    name?: string
+    description?: string
+  }) =>
+    request<ImportedActivity>('/api/admin/import-activity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   restartServer: () => request<{ restarting: boolean }>('/api/admin/restart', { method: 'POST' }),
   health: () => request<{ status: string }>('/api/health'),
 }

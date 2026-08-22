@@ -13,6 +13,10 @@ import { saveSyncState } from '../apps/server/src/repositories/syncState.repo.js
 /** The athlete the Strava stub logs in as. */
 export const E2E_ATHLETE_ID = 4242
 
+/** A second connected athlete, whose activity the admin page can import. */
+export const E2E_FAMILY_ATHLETE_ID = 7777
+export const E2E_FAMILY_ACTIVITY_ID = 77_001
+
 interface Profile {
   time: number[]
   distance: number[]
@@ -85,6 +89,30 @@ export function seed(dbPath: string): void {
     accessToken: 'e2e-access',
     refreshToken: 'e2e-refresh',
     expiresAt: Math.floor(Date.now() / 1000) + 86_400 * 365,
+  })
+
+  // Second household account: one activity, recorded with heart rate, so the
+  // admin import panel has something to offer.
+  upsertAthlete(db, E2E_FAMILY_ATHLETE_ID, 'Family Member', new Date().toISOString())
+  saveTokens(db, {
+    athleteId: E2E_FAMILY_ATHLETE_ID,
+    accessToken: 'e2e-access',
+    refreshToken: 'e2e-refresh',
+    expiresAt: Math.floor(Date.now() / 1000) + 86_400 * 365,
+  })
+  upsertActivity(db, {
+    id: E2E_FAMILY_ACTIVITY_ID,
+    athleteId: E2E_FAMILY_ATHLETE_ID,
+    name: 'Borrowed Watch Hike',
+    sportType: 'Hike',
+    startDate: '2026-08-18T07:16:56Z',
+    startDateEpoch: Math.floor(Date.parse('2026-08-18T07:16:56Z') / 1000),
+    distanceM: 7752,
+    movingTimeS: 9000,
+    elapsedTimeS: 11_000,
+    totalElevationGainM: 659,
+    streamsStatus: 'done',
+    rawSummary: JSON.stringify({ has_heartrate: true }),
   })
 
   const fixtures = [

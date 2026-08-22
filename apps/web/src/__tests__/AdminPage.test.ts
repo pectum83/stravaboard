@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import type { AllowedAthlete } from '@stravaboard/shared'
+import type { AllowedAthlete, ImportCandidate } from '@stravaboard/shared'
 import AdminPage from '../pages/AdminPage.vue'
 import { api } from '../api/client'
 
@@ -13,8 +13,22 @@ vi.mock('../api/client', () => ({
     disallowAthlete: vi.fn(),
     restartServer: vi.fn(),
     health: vi.fn(),
+    adminAthletes: vi.fn(),
+    importCandidates: vi.fn(),
+    importActivity: vi.fn(),
   },
 }))
+
+const candidate = (id: number, over: Partial<ImportCandidate> = {}): ImportCandidate => ({
+  id,
+  name: `Activity ${id}`,
+  sportType: 'Hike',
+  startDate: '2026-08-18T07:16:56Z',
+  distanceM: 7752.2,
+  totalElevationGainM: 659,
+  hasHeartrate: true,
+  ...over,
+})
 
 const entry = (athleteId: number, over: Partial<AllowedAthlete> = {}): AllowedAthlete => ({
   athleteId,
@@ -32,6 +46,15 @@ describe('AdminPage', () => {
     vi.mocked(api.authStatus).mockResolvedValue({ connected: true, athleteId: 1, isAdmin: true })
     vi.mocked(api.allowlist).mockResolvedValue({
       athletes: [entry(1, { name: 'Chris', connected: true, note: 'owner' }), entry(4242)],
+    })
+    vi.mocked(api.adminAthletes).mockResolvedValue({
+      athletes: [
+        { id: 1, name: 'Chris', activityCount: 1454 },
+        { id: 4242, name: 'Max', activityCount: 161 },
+      ],
+    })
+    vi.mocked(api.importCandidates).mockResolvedValue({
+      activities: [candidate(19790883454), candidate(42, { hasHeartrate: false })],
     })
   })
 
@@ -136,5 +159,53 @@ describe('AdminPage', () => {
     expect(wrapper.find('.restart').text()).toBe('Restart the server')
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  describe('activity import', () => {
+    it('lists the other athletes activities, heart rate first-class', async () => {
+      const wrapper = mount(AdminPage)
+      await flushPromises()
+      expect(api.importCandidates).toHaveBeenCalledWith(4242)
+      const items = wrapper.findAll('.candidates li')
+      expect(items).toHaveLength(2)
+      expect(items[0]!.text()).toContain('2026-08-18')
+      expect(items[0]!.text()).toContain('7.8 km')
+      expect(items[1]!.classes()).toContain('unusable')
+      expect(items[1]!.find('button').attributes('disabled')).toBeDefined()
+    })
+
+    it('imports the selected activity and links to the result', async () => {
+      vi.mocked(api.importActivity).mockResolvedValue({
+        activityId: 990001,
+        url: 'https://www.strava.com/activities/990001',
+        name: 'Activity 19790883454',
+        averageHeartrate: 130,
+        maxHeartrate: 149,
+      })
+      const wrapper = mount(AdminPage)
+      await flushPromises()
+
+      await wrapper.findAll('.candidates button')[0]!.trigger('click')
+      await wrapper.find('.import').trigger('click')
+      await flushPromises()
+
+      expect(api.importActivity).toHaveBeenCalledWith({
+        activityId: 19790883454,
+        name: 'Activity 19790883454',
+      })
+      const link = wrapper.find('.imported a')
+      expect(link.attributes('href')).toBe('https://www.strava.com/activities/990001')
+      expect(wrapper.find('.imported').text()).toContain('130 bpm average')
+    })
+
+    it('shows why Strava refused the upload', async () => {
+      vi.mocked(api.importActivity).mockRejectedValue(new Error('duplicate of activity 42'))
+      const wrapper = mount(AdminPage)
+      await flushPromises()
+      await wrapper.findAll('.candidates button')[0]!.trigger('click')
+      await wrapper.find('.import').trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).toContain('duplicate of activity 42')
+    })
   })
 })

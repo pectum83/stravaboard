@@ -7,7 +7,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/__tests__/**', 'src/index.ts', 'src/db/migrations/**'],
+      // Entry points are I/O glue over tested code (importService, repositories).
+      exclude: ['src/**/__tests__/**', 'src/index.ts', 'src/scripts/**', 'src/db/migrations/**'],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     },
   },

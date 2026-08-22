@@ -186,6 +186,29 @@ the first time the app runs; after that the admin page is the source of truth.
 The admin page also has a **Restart the server** button, for the rare case where
 you edited the server's `.env` by hand and need it reloaded.
 
+## Borrowed someone else's watch?
+
+If you recorded an outing on another family member's watch, the activity — and
+its heart rate — lands on _their_ Strava, so yours never scores the effort.
+The admin page's **Import an activity from another account** panel fixes that:
+pick the account, pick the activity (only the ones with a ❤️ can be imported),
+adjust the name, and click _Import onto my account_. Behind the scenes the
+recording is rebuilt as a TCX file and uploaded to your account, so Strava
+recomputes your Relative Effort and fitness curve with your own heart-rate
+zones. It takes a few seconds; the panel then links to the new activity.
+
+Their copy stays on their account (Strava's API cannot delete it), and importing
+the same activity twice is refused as a duplicate. If you already created your
+own copy of that day by hand, delete it on strava.com first — heart rate cannot
+be added to an existing activity.
+
+The same import is available from a shell, for scripting:
+
+```bash
+deploy/import-activity.sh --activity 19790883454 --dry-run   # inspect first
+deploy/import-activity.sh --activity 19790883454
+```
+
 ## How the sync works
 
 1. `GET /athlete/activities?after=<checkpoint>` pages through everything newer

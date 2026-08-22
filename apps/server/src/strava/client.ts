@@ -28,6 +28,9 @@ export class RateLimitError extends Error {
   }
 }
 
+/** Stream kinds the sync engine stores; see `toStoredStreams`. */
+export const SYNC_STREAM_KEYS = 'time,distance,altitude,latlng'
+
 export class StravaClient {
   readonly rateLimiter: RateLimiter
 
@@ -56,11 +59,12 @@ export class StravaClient {
     return this.request<StravaSummaryActivity>(athleteId, `/activities/${activityId}`)
   }
 
-  async getStreams(athleteId: number, activityId: number) {
-    const params = new URLSearchParams({
-      keys: 'time,distance,altitude,latlng',
-      key_by_type: 'true',
-    })
+  /**
+   * Activity streams. The default keys are the ones the sync stores; the import
+   * service asks for more (heart rate, cadence) without changing what sync does.
+   */
+  async getStreams(athleteId: number, activityId: number, keys = SYNC_STREAM_KEYS) {
+    const params = new URLSearchParams({ keys, key_by_type: 'true' })
     return this.request<StravaStreamSet>(athleteId, `/activities/${activityId}/streams?${params}`)
   }
 

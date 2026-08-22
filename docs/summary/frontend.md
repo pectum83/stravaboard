@@ -80,6 +80,16 @@ before the POST, optional note, inline error, draft kept on failure) and a
 `/api/admin/restart` then polls `api.health()` every 500 ms (30 tries) until the
 process is back. **Never click that button in e2e.**
 
+It also carries the **activity import** panel ("Import an activity from another
+account"): a `<select>` of `api.adminAthletes()` minus my own id (first entry
+preselected), the chosen athlete's `api.importCandidates()` as a `.candidates`
+list (date / name / sport · km · D+ · ❤️; rows without heart rate are `.unusable`
+and their button disabled), a name field pre-filled from the source, and an
+"Import onto my account" button calling `api.importActivity()`. Success renders
+`.imported` with a link to the new Strava activity and its average/max heart
+rate; failures show the server's own message — `request()` in `api/client.ts`
+now prefers the JSON body's `error` field over the bare status line.
+
 ## DashboardPage
 
 Layout: `SyncStatusBar` on top; aside 320 px = `ActivityFilters` + a
