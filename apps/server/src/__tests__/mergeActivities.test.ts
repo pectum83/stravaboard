@@ -331,6 +331,25 @@ describe('merging two interrupted activities — refusals', () => {
     expect(getActivity(db, 990_500)?.sportType).toBe('Hike')
   })
 
+  it('refuses to adopt the previous merge when a tag says to replace it', async () => {
+    const path = snapshotPath()
+    await mergeActivities(setup().deps, pair({ dryRun: true, snapshotPath: path }))
+    const { deps, db } = setup({
+      deletedFromStrava: true,
+      stub: {
+        activities: [makeActivity(990_500, CLIMB_START, { sport_type: 'Workout' })],
+        uploadError: `duplicate of <a href='/activities/990500'>Plateau</a>`,
+      },
+    })
+
+    expect(
+      await codeOf(() =>
+        mergeActivities(deps, pair({ source: { kind: 'snapshot', path }, tag: 'v2' })),
+      ),
+    ).toBe('previous-merge-present')
+    expect(getActivity(db, 990_500)).toBeFalsy()
+  })
+
   it('refuses two activities that belong to different athletes', async () => {
     const { deps, stub } = setup({
       rows: [row(CLIMB, CLIMB_START), row(DESCENT, DESCENT_START, { athleteId: SOMEONE_ELSE })],

@@ -49,6 +49,7 @@ const { values } = parseArgs({
     sample: { type: 'string' },
     'pause-sample': { type: 'string' },
     bow: { type: 'string' },
+    via: { type: 'string' },
     undulation: { type: 'string' },
     'dry-run': { type: 'boolean', default: false },
     out: { type: 'string' },
@@ -90,11 +91,24 @@ const bridge = {
   ...defined('sampleS', optionalNumber('sample', values.sample)),
   ...defined('pauseSampleS', optionalNumber('pause-sample', values['pause-sample'])),
   ...defined('bowM', optionalNumber('bow', values.bow)),
+  ...defined('via', waypoints(values.via)),
   ...defined('undulationM', optionalNumber('undulation', values.undulation)),
 }
 
 function defined<T>(key: string, value: T | undefined): Record<string, T> {
   return value === undefined ? {} : { [key]: value }
+}
+
+/** `--via "44.8961,5.5213;44.8941,5.5207"` → the points the bridge must pass through. */
+function waypoints(raw: string | undefined): [number, number][] | undefined {
+  if (raw === undefined) return undefined
+  return raw.split(';').map((pair) => {
+    const [lat, lng] = pair.split(',').map(Number)
+    if (lat === undefined || lng === undefined || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      fail(`--via wants "lat,lng;lat,lng", got "${pair}"`)
+    }
+    return [lat, lng] as [number, number]
+  })
 }
 
 const db = openDb(config.DATABASE_PATH)

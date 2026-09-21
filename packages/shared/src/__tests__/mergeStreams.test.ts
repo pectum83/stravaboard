@@ -118,6 +118,49 @@ describe('mergeTcxStreams — shape of the result', () => {
   })
 })
 
+describe('mergeTcxStreams — routing around the ground', () => {
+  it('passes through the waypoints it is given', () => {
+    const { first, second, offsetS } = pair(1000, 2000)
+    // 200 m west of the straight line, halfway along it.
+    const detour: [number, number] = [
+      45 + (600 + 500) / M_PER_DEG_LAT,
+      LNG - 200 / (M_PER_DEG_LAT * Math.cos((45 * Math.PI) / 180)),
+    ]
+    const merged = mergeTcxStreams(first, second, { offsetS, pauseS: 600, via: [detour] })
+    const bridge = merged.streams.latlng!.slice(601, 601 + merged.bridge.points)
+    const nearest = Math.min(...bridge.map((p) => haversineM(p, detour)))
+
+    expect(nearest).toBeLessThan(5)
+    expect(merged.bridge.lengthM).toBeGreaterThan(1050)
+  })
+
+  it('still lands exactly on both ends of a routed bridge', () => {
+    const { first, second, offsetS } = pair(1000, 2000)
+    const detour: [number, number] = [45 + 1100 / M_PER_DEG_LAT, LNG - 0.002]
+    const merged = mergeTcxStreams(first, second, { offsetS, pauseS: 600, via: [detour] })
+    const bridge = merged.streams.latlng!.slice(601, 601 + merged.bridge.points)
+
+    expect(haversineM(bridge[0]!, first.latlng!.at(-1)!)).toBe(0)
+    expect(haversineM(bridge.at(-1)!, second.latlng![0]!)).toBeLessThan(6)
+  })
+
+  it('keeps the walk gradual through a routed bridge', () => {
+    const { first, second, offsetS } = pair(1000, 2000)
+    const detour: [number, number] = [45 + 1100 / M_PER_DEG_LAT, LNG - 0.002]
+    const { streams, bridge } = mergeTcxStreams(first, second, {
+      offsetS,
+      pauseS: 600,
+      via: [detour],
+    })
+    for (let i = 602; i < 601 + bridge.points; i++) {
+      const v =
+        haversineM(streams.latlng![i - 1]!, streams.latlng![i]!) /
+        (streams.time[i]! - streams.time[i - 1]!)
+      expect(v).toBeLessThanOrEqual(bridge.vPlateauMps * 1.05)
+    }
+  })
+})
+
 describe('mergeTcxStreams — the standstill', () => {
   it('freezes position, altitude and distance for the whole pause', () => {
     const { streams, bridge } = merge(1000, 1000, { pauseS: 440, pauseSampleS: 30 })

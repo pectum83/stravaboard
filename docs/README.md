@@ -240,7 +240,16 @@ deploy/merge-activities.sh --from-snapshot merge-artifacts/stravaboard-merge.sou
 ```
 
 `--pause <seconds>` and `--speed <m/s>` are two ways of saying the same thing:
-give one and the other follows from the distance between the two ends. The
+give one and the other follows from the distance between the two ends.
+
+**Check the invented line against the ground.** Strava recomputes elevation from
+its own terrain model when it takes in an uploaded file, so the merged activity
+shows whatever the terrain does under the path — not the altitudes in the file.
+A straight line between two points of a mountain outing happily walks through a
+ravine, and the result is a hiker who dives 200 m and climbs back out in a
+quarter of an hour. Look at the GeoJSON on a map, and route around with
+`--via "lat,lng;lat,lng"`; leave the walk enough of the gap that the climb rate
+stays believable. The
 merged activity is stored in stravaBoard straight away, like an import; run a
 sync from the admin page to fetch its streams. The two originals keep their
 rows in stravaBoard until you delete them there too.

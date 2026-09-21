@@ -49,6 +49,8 @@ export type MergeErrorCode =
   | 'mixed-athletes'
   /** Strava still holds one of the originals, so the merge would be a duplicate. */
   | 'sources-still-present'
+  /** A merge of this pair is already on Strava, and this run would replace it. */
+  | 'previous-merge-present'
   /** One side has no heart rate, so the merged activity would lose it. */
   | 'heartrate-asymmetric'
   | 'snapshot-unreadable'
@@ -237,6 +239,16 @@ export async function mergeActivities(
     }
     // Any other id is a merge this same file already became — adopt it, so a
     // run that died between the upload and the sport-type PUT can be repeated.
+    // Unless a tag was passed: that says "this one is corrected, replace the
+    // last one", and adopting the old activity would silently keep the very
+    // file the tag exists to throw away.
+    if (request.tag !== undefined && request.tag !== '') {
+      throw new MergeError(
+        'previous-merge-present',
+        `activity ${err.duplicateActivityId} is an earlier merge of the same outing:` +
+          ' delete it on strava.com, then run again with this tag',
+      )
+    }
     activityId = err.duplicateActivityId
     alreadyExisted = true
     created = await updateSportType(uploadDeps, snapshot.athleteId, activityId, sportType)

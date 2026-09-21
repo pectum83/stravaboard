@@ -322,8 +322,12 @@ run that died between the upload and the sport-type PUT can simply be repeated.
 `--tag v2` exists because Strava remembers an `external_id` even after the
 activity it created is deleted.
 
+`--tag` also hardens the duplicate rule: with a tag set, an adoption is never
+right — the tag means "this one replaces the last one" — so a duplicate that is
+not a source raises `previous-merge-present` instead.
+
 `MergeError.code` ∈ `unknown-source | mixed-athletes | sources-still-present |
-heartrate-asymmetric | snapshot-unreadable`; `BridgeError` (shared) covers the
+previous-merge-present | heartrate-asymmetric | snapshot-unreadable`; `BridgeError` (shared) covers the
 refusals to fabricate. `upsertActivitySummary` stores the result as `'pending'`
 for the same reason as the import. The **two source rows are left in place** —
 they stay in stravaBoard (and keep counting in aggregates) until deleted by

@@ -68,6 +68,18 @@ export interface BridgeOptions {
   /** Lateral bow of the invented path, so it is not a laser-straight line. */
   bowM?: number
   /**
+   * Waypoints the invented path must pass through, `[lat, lng]`, in order.
+   *
+   * A straight line between two points of a mountain outing is a guess about
+   * the ground, and often a bad one: it walks through whatever ravine happens
+   * to lie between them. Worse, Strava re-derives elevation from its own
+   * terrain model when it ingests an uploaded file, so the dive it invents is
+   * what the activity ends up showing, whatever altitudes the file carried.
+   * Route around it. When waypoints are given they replace `bowM`, and the
+   * path is a Catmull-Rom spline through them — a walker rounds corners.
+   */
+  via?: [number, number][]
+  /**
    * Amplitude of an altitude ripple along the walk. Zero by default **because
    * it fabricates elevation gain**: Strava recomputes D+ from the track, so a
    * ±2.5 m ripple over a quarter of an hour invents tens of meters of climb.
@@ -205,7 +217,7 @@ export function mergeTcxStreams(
   )
   const keep = (key: OptionalKey): boolean => first[key] !== undefined && second[key] !== undefined
 
-  const path = buildPath(first.latlng![from]!, second.latlng![to]!, bowM)
+  const path = buildPath(first.latlng![from]!, second.latlng![to]!, bowM, options.via ?? [])
   const lengthM = path.lengthM
   if (lengthM < MIN_BRIDGE_M || lengthM > MAX_BRIDGE_M) {
     throw new BridgeError(
@@ -426,21 +438,31 @@ interface Path {
 }
 
 /**
- * A gently bowed path between two points, sampled into an arc-length table.
+ * The invented path between two points, sampled into an arc-length table.
  *
- * Linear interpolation in degrees (with a cosine correction on longitude) is
- * exact to the millimetre over a kilometre; the table exists so that a
- * *distance* fraction maps to the matching point, which a raw parameter would
- * not once the bow makes the path longer than the chord.
+ * Without waypoints it is a straight line with a sinusoidal lateral bow;
+ * with them it is a Catmull-Rom spline through them, so the walker rounds
+ * corners instead of turning on the spot. Linear interpolation in degrees
+ * (with a cosine correction on longitude) is exact to the millimetre over a
+ * kilometre; the table exists so that a *distance* fraction maps to the
+ * matching point, which a raw parameter would not once the path is longer
+ * than the chord.
  */
-function buildPath(a: [number, number], b: [number, number], bowM: number): Path {
+function buildPath(
+  a: [number, number],
+  b: [number, number],
+  bowM: number,
+  via: [number, number][],
+): Path {
   const latMid = ((a[0] + b[0]) / 2) * (Math.PI / 180)
   const mPerDegLng = M_PER_DEG_LAT * Math.cos(latMid)
   const east = (b[1] - a[1]) * mPerDegLng
   const north = (b[0] - a[0]) * M_PER_DEG_LAT
   const norm = Math.hypot(east, north)
 
+  const control: [number, number][] = [a, ...via, b]
   const at = (u: number): [number, number] => {
+    if (via.length > 0) return spline(control, Math.min(1, Math.max(0, u)))
     const lat = a[0] + u * (b[0] - a[0])
     const lng = a[1] + u * (b[1] - a[1])
     if (bowM === 0 || norm === 0) return [lat, lng]
@@ -474,6 +496,28 @@ function buildPath(a: [number, number], b: [number, number], bowM: number): Path
       return [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]
     },
   }
+}
+
+/**
+ * Catmull-Rom through `control` at `u` ∈ [0, 1]; the end points are doubled so
+ * the curve starts and finishes exactly on them.
+ */
+function spline(control: [number, number][], u: number): [number, number] {
+  const last = control.length - 1
+  const t = u * last
+  const i = Math.min(last - 1, Math.floor(t))
+  const f = t - i
+  const p0 = control[Math.max(0, i - 1)]!
+  const p1 = control[i]!
+  const p2 = control[i + 1]!
+  const p3 = control[Math.min(last, i + 2)]!
+  const axis = (k: 0 | 1): number =>
+    0.5 *
+    (2 * p1[k] +
+      (-p0[k] + p2[k]) * f +
+      (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * f * f +
+      (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * f * f * f)
+  return [axis(0), axis(1)]
 }
 
 /** Index of the outermost sample carrying a real fix — a [0, 0] is a watch still searching. */

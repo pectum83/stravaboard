@@ -216,9 +216,18 @@ first stream that starts late shortens the gap by that much.
   `pauseS` is rounded to whole seconds; `walkS = gapS − pauseS`.
 - The path is linear in degrees with a `cos(lat)` correction on longitude
   (exact to the millimetre over a kilometre), plus a sinusoidal lateral bow of
-  `bowM` (default 20) so the track is not a laser line. It is sampled into an
-  **arc-length table** of `PATH_STEPS = 400` points; `lengthM` is the sum of
-  `haversineM` over that table — the emitted geometry, not a formula.
+  `bowM` (default 20) so the track is not a laser line. `via` waypoints replace
+  the bow with a **Catmull-Rom spline** through them. Either way it is sampled
+  into an **arc-length table** of `PATH_STEPS = 400` points; `lengthM` is the
+  sum of `haversineM` over that table — the emitted geometry, not a formula.
+- **Check the straight line against the ground before accepting it.** Strava
+  re-derives elevation from its own terrain model when it ingests an uploaded
+  file, so whatever altitudes the file carries, the activity ends up showing
+  the terrain under the path. A straight line between two points of a mountain
+  outing walks through whatever ravine lies between them, and the published
+  activity then shows that dive — at whatever speed the bridge's timing implies.
+  Sample a DEM along the candidate line, route around with `via`, and give the
+  walk enough of the gap that the vertical rates stay human.
 - Speed is a **trapezoid** (`rampS` up, plateau, `rampS` down, ramp capped at
   `walkS/2`), so `vPlateau = lengthM / (walkS − rampS)`, rejected outside
   0.3–3 m/s. Distance is `lengthM · φ(u)` with φ the normalised integral of
