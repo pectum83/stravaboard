@@ -1,4 +1,6 @@
-# Vertical-speed algorithms — `packages/shared/src/vspeed/`
+# Pure algorithms — `packages/shared/src/`
+
+Vertical speed lives in `vspeed/`; the activity-merge bridge in `tcx/`.
 
 All pure functions over parallel streams `time[]` (s), `distance[]` (m),
 `altitude[]` (m), optional `latlng[]` (`[lat,lng]` pairs, Strava order).
@@ -195,3 +197,57 @@ for flattenNoiseBursts tests). **Use a
 horizontal speed of 6 m/s when you need exact pause boundaries** (one sample
 leaves the 5 m radius); at 1 m/s the anchor scan extends the pause a few
 samples on each side.
+
+## tcx/mergeStreams.ts — `mergeTcxStreams(first, second, options)`
+
+Fabricates the samples between two activities the watch split in half, and
+returns `{streams, bridge, dropped, startShiftS}`. Deterministic — no RNG — so
+every point is assertable.
+
+**Normalisation first.** Both sides are rebased (`time − time[0]`,
+`distance − distance[0]`); `startShiftS` tells the caller how far to push the
+TCX start date. `offsetS` is the difference of the two `start_date`s, so a
+first stream that starts late shortens the gap by that much.
+
+**Stand still, then walk.**
+
+- `pauseS` and `cruiseSpeedMps` are **mutually exclusive**: the bridge length is
+  an output, so one input fixes the other (`over-determined` otherwise).
+  `pauseS` is rounded to whole seconds; `walkS = gapS − pauseS`.
+- The path is linear in degrees with a `cos(lat)` correction on longitude
+  (exact to the millimetre over a kilometre), plus a sinusoidal lateral bow of
+  `bowM` (default 20) so the track is not a laser line. It is sampled into an
+  **arc-length table** of `PATH_STEPS = 400` points; `lengthM` is the sum of
+  `haversineM` over that table — the emitted geometry, not a formula.
+- Speed is a **trapezoid** (`rampS` up, plateau, `rampS` down, ramp capped at
+  `walkS/2`), so `vPlateau = lengthM / (walkS − rampS)`, rejected outside
+  0.3–3 m/s. Distance is `lengthM · φ(u)` with φ the normalised integral of
+  that trapezoid, and position is looked up **by distance fraction** — the file's
+  distance and its track can never drift apart.
+- During the pause, position, altitude and distance are **strictly** the first
+  activity's last values and cadence is 0: Strava recomputes moving time from
+  the track, and stravaBoard's `isRealStandstill` only accepts a break whose
+  path does not advance and whose altitude does not move.
+
+**Altitude.** Interpolated over the distance covered. `undulationM` defaults to
+**0 on purpose**: Strava recomputes D+ from the track, so a ±2.5 m ripple over
+a quarter of an hour invents tens of meters of climb that stravaBoard's
+`ascentDescentToleranceM = 10` would absorb — the two would then disagree
+forever. When set, the ripple is tapered in `sin²` over `UNDULATION_TAPER_S` at
+each end so it meets the real samples flush.
+
+**Heart rate and cadence are read off the real samples**, never hard-coded: a
+watch reporting one-foot cadence sits around 50, so a literal 100 would spike
+mid-track. `walkHr`/`walkCadence` default to the median of the second
+activity's first `SAMPLE_WINDOW_S = 300` s, `restHr` to 78 % of it (clamped
+60–100). The rate decays exponentially towards `restHr` while still (τ 120 s,
+with a ±1.5 bpm drift so it is not flat to the beat), climbs towards `walkHr`
+once walking (τ 90 s), and is blended linearly onto the second activity's first
+beat over the last `HR_BLEND_S = 60` s. Optional streams survive only if
+**both** sides carry them; the others are listed in `dropped`.
+
+`BridgeError.code` ∈ `misaligned | not-increasing | no-distance | no-latlng |
+overlap | bad-offset | over-determined | implausible-bridge | implausible-speed`.
+`[0, 0]` samples at either junction are skipped as a watch still searching for a
+fix; the merged `time` (strictly increasing) and `distance` (non-decreasing) are
+re-checked before returning.
