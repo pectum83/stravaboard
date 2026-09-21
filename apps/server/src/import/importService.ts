@@ -9,6 +9,7 @@ import {
   ImportError,
   IMPORT_STREAM_KEYS,
   postUpload,
+  updateSportType,
   type UploadDeps,
 } from './stravaUpload.js'
 
@@ -130,12 +131,9 @@ export async function importActivity(
     log(`upload ${uploadId} accepted, waiting for Strava to process it`)
     activityId = await awaitUpload(deps, request.targetAthleteId, uploadId)
     // TCX only knows Running/Biking/Other — never a Strava sport type — so the
-    // upload always lands on the wrong type and needs this correction. A PUT
-    // combining name and sport_type can drop the type (see SyncService.editActivity),
-    // hence a type-only call: the name was already set by the upload.
-    created = await client.updateActivity(request.targetAthleteId, activityId, {
-      sport_type: activity.sport_type,
-    })
+    // upload always lands on the wrong type and needs this correction. The name
+    // was already set by the upload, so this stays a type-only call.
+    created = await updateSportType(deps, request.targetAthleteId, activityId, activity.sport_type)
   } catch (err) {
     // Re-importing is not a failure: the stable external_id means Strava
     // already turned this activity into that one. Adopt it instead.

@@ -33,6 +33,7 @@ import {
   ImportError,
   IMPORT_STREAM_KEYS,
   postUpload,
+  updateSportType,
   type UploadDeps,
 } from './stravaUpload.js'
 
@@ -224,9 +225,7 @@ export async function mergeActivities(
     activityId = await awaitUpload(uploadDeps, snapshot.athleteId, uploadId)
     // TCX only knows Running/Biking/Other, so the upload always lands on the
     // wrong type; a type-only PUT puts it back (see importService).
-    created = await deps.client.updateActivity(snapshot.athleteId, activityId, {
-      sport_type: sportType,
-    })
+    created = await updateSportType(uploadDeps, snapshot.athleteId, activityId, sportType)
   } catch (err) {
     if (!(err instanceof ImportError) || err.duplicateActivityId === undefined) throw err
     if (sourceIds.includes(err.duplicateActivityId)) {
@@ -240,9 +239,7 @@ export async function mergeActivities(
     // run that died between the upload and the sport-type PUT can be repeated.
     activityId = err.duplicateActivityId
     alreadyExisted = true
-    created = await deps.client.updateActivity(snapshot.athleteId, activityId, {
-      sport_type: sportType,
-    })
+    created = await updateSportType(uploadDeps, snapshot.athleteId, activityId, sportType)
     log(`already uploaded earlier as activity ${activityId}`)
   }
 

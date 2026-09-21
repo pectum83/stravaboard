@@ -250,8 +250,12 @@ heartrate,cadence')` — the keys argument added for this; the sync keeps
    `RateLimiter`), `external_id = stravaboard-import-<sourceActivityId>` →
    **a repeat import comes back as "duplicate of activity N"**, never a second copy.
 6. Polls `GET /uploads/{id}` every 2 s (90 s cap → `'upload-timeout'`).
-7. Restores the real `sport_type` with a **type-only** `updateActivity` (TCX
-   can't express Hike, and a combined name+type PUT can drop the type).
+7. Restores the real `sport_type` with `updateSportType` (stravaUpload.ts): a
+   **type-only** `updateActivity` (TCX can't express Hike, and a combined
+   name+type PUT can drop the type) **plus one retry when the response echoes a
+   different type** — Strava applies `sport_type` late or not at all often
+   enough that a single PUT is not reliable, the same retry
+   `SyncService.editActivity` does.
 8. **`upsertActivitySummary` stores the result locally as 'pending'** and the
    route then calls `startSync()`. Non-negotiable: `fetchNewSummaries` pages
    `?after=<newest start date>`, so an activity uploaded today but STARTED weeks

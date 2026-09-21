@@ -248,6 +248,33 @@ describe('merging two interrupted activities — upload', () => {
     const { db } = await dryRunThenUpload()
     expect(getActivity(db, 990_001)?.sportType).toBe('Hike')
   })
+
+  it('asks again when Strava quietly ignores the sport type', async () => {
+    const path = snapshotPath()
+    await mergeActivities(setup().deps, pair({ dryRun: true, snapshotPath: path }))
+    const { deps, db } = setup({ deletedFromStrava: true, stub: { dropSportTypeUpdateCount: 1 } })
+
+    await mergeActivities(deps, pair({ source: { kind: 'snapshot', path } }))
+
+    expect(getActivity(db, 990_001)?.sportType).toBe('Hike')
+  })
+
+  it('re-types a merge adopted from an earlier run that never finished', async () => {
+    const path = snapshotPath()
+    await mergeActivities(setup().deps, pair({ dryRun: true, snapshotPath: path }))
+    const { deps, db } = setup({
+      deletedFromStrava: true,
+      stub: {
+        activities: [makeActivity(990_500, CLIMB_START, { sport_type: 'Workout' })],
+        uploadError: `duplicate of <a href='/activities/990500'>Plateau</a>`,
+        dropSportTypeUpdateCount: 1,
+      },
+    })
+
+    await mergeActivities(deps, pair({ source: { kind: 'snapshot', path } }))
+
+    expect(getActivity(db, 990_500)?.sportType).toBe('Hike')
+  })
 })
 
 describe('merging two interrupted activities — refusals', () => {

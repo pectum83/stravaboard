@@ -11,7 +11,7 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/client.js'
 import type { StravaClient } from '../strava/client.js'
 import { ensureFreshToken, type FetchLike } from '../strava/oauth.js'
-import type { StravaUpload } from '../strava/types.js'
+import type { StravaSummaryActivity, StravaUpload } from '../strava/types.js'
 
 /** Stream kinds an uploaded file carries; a superset of what the sync stores. */
 export const IMPORT_STREAM_KEYS = 'time,distance,altitude,latlng,heartrate,cadence'
@@ -57,6 +57,30 @@ export interface UploadFields {
   externalId: string
   commute: boolean
   trainer: boolean
+}
+
+/**
+ * Put the real sport type back on an uploaded activity.
+ *
+ * A TCX can only say Running, Biking or Other, so every upload lands on the
+ * wrong type. Strava's UpdateActivity is unreliable for `sport_type` — it can
+ * apply late, or not at all, and the response can echo the stale value — so one
+ * type-only retry follows whenever the answer disagrees, exactly as
+ * `SyncService.editActivity` does. The retry is a harmless no-op when the first
+ * call did land.
+ */
+export async function updateSportType(
+  deps: UploadDeps,
+  athleteId: number,
+  activityId: number,
+  sportType: string,
+): Promise<StravaSummaryActivity> {
+  const updated = await deps.client.updateActivity(athleteId, activityId, {
+    sport_type: sportType,
+  })
+  if (updated.sport_type === sportType) return updated
+  deps.log?.(`Strava ignored the sport type on activity ${activityId}, asking again`)
+  return deps.client.updateActivity(athleteId, activityId, { sport_type: sportType })
 }
 
 /**
