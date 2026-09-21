@@ -5,6 +5,7 @@ import {
   countPendingStreams,
   countStreamsMissingLatlng,
   cursorFor,
+  deleteActivityRow,
   getActivity,
   listActivities,
   listPendingStreams,
@@ -199,6 +200,27 @@ describe('streams repo', () => {
 
   it('returns null for unknown activity', () => {
     expect(getStreams(testDb(), 42)).toBeNull()
+  })
+
+  it('forgets an activity and its streams together', () => {
+    const db = testDb()
+    upsertActivity(db, activity(1, 1000))
+    upsertActivity(db, activity(2, 2000))
+    saveStreams(
+      db,
+      1,
+      { time: [0, 1], distance: [0, 3], altitude: null, latlng: null },
+      '2026-01-01',
+    )
+
+    expect(deleteActivityRow(db, 1)).toBe(true)
+    expect(getActivity(db, 1)).toBeNull()
+    expect(getStreams(db, 1)).toBeNull()
+    expect(getActivity(db, 2)).not.toBeNull()
+  })
+
+  it('says so when there was nothing to forget', () => {
+    expect(deleteActivityRow(testDb(), 42)).toBe(false)
   })
 
   it('serves latlng as null both for "no GPS" ([]) and "not backfilled" (NULL)', () => {

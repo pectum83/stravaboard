@@ -23,7 +23,11 @@ import {
   type BridgeOptions,
   type TcxStreams,
 } from '@stravaboard/shared'
-import { getActivity, upsertActivitySummary } from '../repositories/activities.repo.js'
+import {
+  deleteActivityRow,
+  getActivity,
+  upsertActivitySummary,
+} from '../repositories/activities.repo.js'
 import { NotFoundError } from '../strava/client.js'
 import type { StravaStreamSet, StravaSummaryActivity } from '../strava/types.js'
 import { toActivityRow } from '../sync/syncService.js'
@@ -89,6 +93,15 @@ export interface MergeRequest {
   snapshotPath?: string
   /** Merge even though only one side has heart rate (the merged file loses it). */
   allowMissingHeartrate?: boolean
+  /**
+   * Drop the two source rows from the local database once the merge is stored.
+   *
+   * They are dead by then: the merge cannot be uploaded until both originals
+   * are deleted from Strava, and nothing in the sync ever removes a row for an
+   * activity that stopped coming back — so without this they keep counting in
+   * every total, and the day reads as three outings instead of one.
+   */
+  forgetSources?: boolean
 }
 
 export interface MergeSummary {
@@ -126,6 +139,8 @@ export interface MergeResult {
   url: string | null
   /** True when Strava recognised the file as an earlier upload of the same merge. */
   alreadyExisted: boolean
+  /** Source rows dropped from the local database, when asked to forget them. */
+  forgotten: number[]
 }
 
 export type MergeDeps = UploadDeps
@@ -199,7 +214,16 @@ export async function mergeActivities(
       ` covering ${merged.bridge.lengthM.toFixed(0)} m in ${merged.bridge.gapS} s`,
   )
   if (request.dryRun === true) {
-    return { summary, tcx, geojson, snapshot, activityId: null, url: null, alreadyExisted: false }
+    return {
+      summary,
+      tcx,
+      geojson,
+      snapshot,
+      activityId: null,
+      url: null,
+      alreadyExisted: false,
+      forgotten: [],
+    }
   }
 
   // Strava rejects an upload that overlaps an existing activity, and this file
@@ -260,6 +284,12 @@ export async function mergeActivities(
   // returned and would stay invisible in stravaBoard.
   upsertActivitySummary(deps.db, toActivityRow(snapshot.athleteId, created))
 
+  // Only once the merge is safely stored: a row deleted before that would be
+  // lost for nothing if the upsert threw.
+  const forgotten =
+    request.forgetSources === true ? sourceIds.filter((id) => deleteActivityRow(deps.db, id)) : []
+  if (forgotten.length > 0) log(`dropped the local rows for ${forgotten.join(' and ')}`)
+
   return {
     summary,
     tcx,
@@ -268,6 +298,7 @@ export async function mergeActivities(
     activityId,
     url: `https://www.strava.com/activities/${activityId}`,
     alreadyExisted,
+    forgotten,
   }
 }
 

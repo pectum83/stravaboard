@@ -57,6 +57,7 @@ const { values } = parseArgs({
     'from-snapshot': { type: 'string' },
     geojson: { type: 'string' },
     'allow-missing-heartrate': { type: 'boolean', default: false },
+    forget: { type: 'boolean', default: false },
   },
 })
 
@@ -130,6 +131,7 @@ try {
       bridge,
       dryRun: values['dry-run'],
       allowMissingHeartrate: values['allow-missing-heartrate'],
+      forgetSources: values.forget,
       ...defined('name', values.name),
       ...defined('description', values.description),
       ...defined('sportType', values.sport),
@@ -183,6 +185,11 @@ try {
       result.alreadyExisted
         ? `already on Strava as activity ${result.activityId}: ${result.url}`
         : `merged into activity ${result.activityId}: ${result.url}`,
+    )
+    console.log(
+      result.forgotten.length > 0
+        ? `dropped the local rows for ${result.forgotten.join(' and ')}`
+        : 'the two source rows are still in the database — pass --forget to drop them',
     )
     console.log('stored locally as pending — run a sync from /#/admin to fetch its streams')
   }

@@ -329,9 +329,12 @@ not a source raises `previous-merge-present` instead.
 `MergeError.code` ∈ `unknown-source | mixed-athletes | sources-still-present |
 previous-merge-present | heartrate-asymmetric | snapshot-unreadable`; `BridgeError` (shared) covers the
 refusals to fabricate. `upsertActivitySummary` stores the result as `'pending'`
-for the same reason as the import. The **two source rows are left in place** —
-they stay in stravaBoard (and keep counting in aggregates) until deleted by
-hand. The CLI does not trigger a sync; it prints that one is needed.
+for the same reason as the import. `forgetSources` (CLI `--forget`) then drops
+the two source rows with `deleteActivityRow` (activities.repo.ts — streams
+first, then the row), **after** the merge is safely stored, and reports the ids
+in `forgotten`. Without it the rows stay: Strava's API has no delete, so an
+activity removed from strava.com simply stops coming back and nothing in the
+sync ever removes its row, which keeps counting in every total. The CLI does not trigger a sync; it prints that one is needed.
 
 CLI façade: `apps/server/src/scripts/mergeActivities.ts` + `deploy/merge-activities.sh`
 (see architecture.md).

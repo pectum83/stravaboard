@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import type { ActivitySummary, StreamsStatus } from '@stravaboard/shared'
 import type { Db } from '../db/client.js'
 import { activities, activityStreams } from '../db/schema.js'
+import { deleteStreams } from './streams.repo.js'
 
 export interface ActivityRow {
   id: number
@@ -357,6 +358,19 @@ export function listSportTypes(db: Db, athleteId: number): string[] {
     .orderBy(asc(activities.sportType))
     .all()
     .map((r) => r.sportType)
+}
+
+/**
+ * Forget an activity entirely — its streams first, then the row itself.
+ *
+ * The sync never does this: Strava's API has no delete, so an activity removed
+ * from strava.com simply stops coming back and its row would sit in the
+ * database for good, still counting in every total. Callers that know a row is
+ * dead (the merge, once its two halves have been replaced) use this.
+ */
+export function deleteActivityRow(db: Db, id: number): boolean {
+  deleteStreams(db, id)
+  return db.delete(activities).where(eq(activities.id, id)).run().changes > 0
 }
 
 export function getActivity(db: Db, id: number): ActivityRow | null {

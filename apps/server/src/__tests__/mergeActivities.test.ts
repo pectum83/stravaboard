@@ -238,6 +238,34 @@ describe('merging two interrupted activities — upload', () => {
     expect(stub.requests.filter((r) => r.includes('/streams'))).toHaveLength(0)
   })
 
+  it('leaves the source rows alone unless asked to forget them', async () => {
+    const { db, result } = await dryRunThenUpload()
+
+    expect(result.forgotten).toEqual([])
+    expect(getActivity(db, CLIMB)).not.toBeNull()
+    expect(getActivity(db, DESCENT)).not.toBeNull()
+  })
+
+  it('forgets the two source rows once the merge is stored', async () => {
+    const { db, result } = await dryRunThenUpload({ forgetSources: true })
+
+    expect(result.forgotten).toEqual([CLIMB, DESCENT])
+    expect(getActivity(db, CLIMB)).toBeNull()
+    expect(getActivity(db, DESCENT)).toBeNull()
+    expect(getActivity(db, 990_001)).not.toBeNull()
+  })
+
+  it('never forgets anything on a dry run', async () => {
+    const { deps, db } = setup()
+    const { forgotten } = await mergeActivities(
+      deps,
+      pair({ dryRun: true, snapshotPath: snapshotPath(), forgetSources: true }),
+    )
+
+    expect(forgotten).toEqual([])
+    expect(getActivity(db, CLIMB)).not.toBeNull()
+  })
+
   it('lets a different tag replace a merge that came out wrong', async () => {
     const { stub } = await dryRunThenUpload({ tag: 'v2' })
 
