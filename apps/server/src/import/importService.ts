@@ -1,12 +1,24 @@
 import { buildTcx, type TcxSport, type TcxStreams } from '@stravaboard/shared'
-import type { Config } from '../config.js'
 import type { Db } from '../db/client.js'
 import { getActivity, upsertActivitySummary } from '../repositories/activities.repo.js'
 import { getAthlete } from '../repositories/athletes.repo.js'
-import type { StravaClient } from '../strava/client.js'
-import { ensureFreshToken, type FetchLike } from '../strava/oauth.js'
 import { toActivityRow } from '../sync/syncService.js'
-import type { StravaStreamSet, StravaSummaryActivity, StravaUpload } from '../strava/types.js'
+import type { StravaStreamSet, StravaSummaryActivity } from '../strava/types.js'
+import {
+  awaitUpload,
+  ImportError,
+  IMPORT_STREAM_KEYS,
+  postUpload,
+  type UploadDeps,
+} from './stravaUpload.js'
+
+export {
+  ImportError,
+  IMPORT_STREAM_KEYS,
+  UPLOAD_POLL_MS,
+  UPLOAD_TIMEOUT_MS,
+  type ImportErrorCode,
+} from './stravaUpload.js'
 
 /**
  * Re-uploads one athlete's activity to another athlete's account, heart rate
@@ -18,41 +30,7 @@ import type { StravaStreamSet, StravaSummaryActivity, StravaUpload } from '../st
  * computes neither Relative Effort nor the fitness curve.
  */
 
-/** Stream kinds the TCX carries; a superset of what the sync stores. */
-const IMPORT_STREAM_KEYS = 'time,distance,altitude,latlng,heartrate,cadence'
-
-/** How long to wait for Strava to process the upload before giving up. */
-const UPLOAD_TIMEOUT_MS = 90_000
-const UPLOAD_POLL_MS = 2_000
-
-export type ImportErrorCode =
-  | 'unknown-source'
-  | 'no-streams'
-  | 'no-heartrate'
-  | 'duplicate'
-  | 'upload-failed'
-  | 'upload-timeout'
-
-export class ImportError extends Error {
-  constructor(
-    readonly code: ImportErrorCode,
-    message: string,
-    /** For 'duplicate': the activity Strava says this file already became. */
-    readonly duplicateActivityId?: number,
-  ) {
-    super(message)
-  }
-}
-
-export interface ImportDeps {
-  config: Config
-  db: Db
-  client: StravaClient
-  fetchImpl?: FetchLike
-  nowMs?: () => number
-  sleep?: (ms: number) => Promise<void>
-  log?: (message: string) => void
-}
+export type ImportDeps = UploadDeps
 
 export interface ImportRequest {
   /** Activity to copy, as it exists on the source account. */
@@ -199,7 +177,7 @@ export function tcxSport(sportType: string): TcxSport {
 }
 
 /** Null when the set has no time stream — nothing can be rebuilt without it. */
-function toTcxStreams(set: StravaStreamSet): TcxStreams | null {
+export function toTcxStreams(set: StravaStreamSet): TcxStreams | null {
   if (!set.time?.data?.length) return null
   return {
     time: set.time.data,
@@ -235,111 +213,4 @@ function summarize(
 function defaultDescription(db: Db, sourceAthleteId: number, sourceActivityId: number): string {
   const who = getAthlete(db, sourceAthleteId)?.displayName ?? `athlete ${sourceAthleteId}`
   return `Imported from ${who}'s watch (Strava activity ${sourceActivityId}).`
-}
-
-interface UploadFields {
-  name: string
-  description: string
-  externalId: string
-  commute: boolean
-  trainer: boolean
-}
-
-/**
- * POST /uploads is multipart, which StravaClient's JSON-only request helper
- * cannot express — hence the raw fetch, with the same token refresh and the
- * shared rate limiter kept up to date.
- */
-async function postUpload(
-  deps: ImportDeps,
-  athleteId: number,
-  tcx: string,
-  fields: UploadFields,
-): Promise<number> {
-  const form = new FormData()
-  form.set('file', new Blob([tcx], { type: 'application/xml' }), `${fields.externalId}.tcx`)
-  form.set('data_type', 'tcx')
-  form.set('name', fields.name)
-  form.set('description', fields.description)
-  form.set('external_id', fields.externalId)
-  form.set('commute', fields.commute ? '1' : '0')
-  form.set('trainer', fields.trainer ? '1' : '0')
-
-  const body = await uploadRequest<StravaUpload>(deps, athleteId, '/uploads', {
-    method: 'POST',
-    body: form,
-  })
-  if (body.error) throw uploadError(body.error)
-  return body.id
-}
-
-/** Poll until Strava turns the upload into an activity, it fails, or we give up. */
-async function awaitUpload(deps: ImportDeps, athleteId: number, uploadId: number): Promise<number> {
-  const nowMs = deps.nowMs ?? Date.now
-  const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
-  const deadline = nowMs() + UPLOAD_TIMEOUT_MS
-  for (;;) {
-    await sleep(UPLOAD_POLL_MS)
-    const body = await uploadRequest<StravaUpload>(deps, athleteId, `/uploads/${uploadId}`)
-    if (body.error) throw uploadError(body.error)
-    if (body.activity_id) return body.activity_id
-    if (nowMs() >= deadline) {
-      throw new ImportError(
-        'upload-timeout',
-        `Strava is still processing upload ${uploadId} (${body.status})`,
-      )
-    }
-  }
-}
-
-/**
- * Strava's upload errors are meant for a web page: they carry markup and HTML
- * entities ("duplicate of &lt;a href='/activities/42'&gt;Rando&lt;/a&gt;").
- * Turn one into a plain sentence, keeping the activity id when there is one.
- */
-function uploadError(message: string): ImportError {
-  const duplicateId = Number(/\/activities\/(\d+)/.exec(message)?.[1])
-  if (/duplicate/i.test(message)) {
-    return Number.isInteger(duplicateId)
-      ? new ImportError('duplicate', `already imported as activity ${duplicateId}`, duplicateId)
-      : new ImportError('duplicate', plainText(message))
-  }
-  return new ImportError('upload-failed', plainText(message))
-}
-
-/** Strip tags and decode the entities Strava actually emits. */
-function plainText(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
-    .replace(/&([a-zA-Z])(?:acute|grave|circ|uml|tilde|cedil);/g, '$1')
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .trim()
-}
-
-async function uploadRequest<T>(
-  deps: ImportDeps,
-  athleteId: number,
-  path: string,
-  init: { method?: string; body?: FormData } = {},
-): Promise<T> {
-  const { config, db, client } = deps
-  const fetchImpl = deps.fetchImpl ?? fetch
-  const nowMs = deps.nowMs ?? Date.now
-  const token = await ensureFreshToken(config, db, athleteId, fetchImpl, () =>
-    Math.floor(nowMs() / 1000),
-  )
-  const res = await fetchImpl(`${config.STRAVA_API_BASE}${path}`, {
-    method: init.method ?? 'GET',
-    headers: { authorization: `Bearer ${token}` },
-    ...(init.body ? { body: init.body } : {}),
-  })
-  client.rateLimiter.update(res.headers, nowMs())
-  if (!res.ok) {
-    throw new ImportError('upload-failed', `Strava upload API ${res.status}: ${await res.text()}`)
-  }
-  return (await res.json()) as T
 }
