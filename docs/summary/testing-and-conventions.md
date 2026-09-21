@@ -79,3 +79,12 @@ build) then e2e job (playwright chromium).
 - e2e selectors: scope to component classes (`.settings input`,
   `.chart canvas`) — bare `input`/`canvas`/`summary` are ambiguous (filters,
   map canvas, maplibre attribution `<summary>`).
+
+## Anything that rewrites an activity on Strava
+
+Dry-run first, and keep a snapshot. `deploy/merge-activities.sh --dry-run`
+writes the TCX, an inspection GeoJSON and a JSON snapshot of both source
+activities before anything is sent; the merge cannot be uploaded until those
+sources are deleted from Strava, and the snapshot is then the only copy of
+their heart rate and cadence (the database stores neither). Never delete an
+original before its snapshot is safely off the VPS.

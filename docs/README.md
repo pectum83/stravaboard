@@ -212,6 +212,39 @@ deploy/import-activity.sh --activity 19790883454 --dry-run   # inspect first
 deploy/import-activity.sh --activity 19790883454
 ```
 
+## The recording stopped halfway through
+
+A watch that stops at the top of a climb leaves one outing on Strava as two
+activities. Strava has no merge, and its API cannot add samples to an existing
+activity, so the fix is to build a single file covering both — and invent the
+stretch nobody recorded. `deploy/merge-activities.sh` does that: the athlete
+stands still where the first recording ended, then walks to where the second
+one starts, with a heart rate that recovers and climbs back the way a real one
+would.
+
+```bash
+# 1. Build it and look at it. Nothing is sent to Strava.
+deploy/merge-activities.sh --first 20254065755 --second 20256244123 \
+  --name "Plateau du Vercors" --pause 1440 --dry-run
+#    → merge-artifacts/: the TCX, a GeoJSON of the invented stretch to drop on
+#      a map, and a snapshot of both activities.
+
+# 2. Delete both originals on strava.com. Strava refuses an upload that
+#    overlaps an existing activity, and the merged file starts where the first
+#    one did. The snapshot from step 1 is now the only copy of their heart
+#    rate and cadence — keep it until the merge is on Strava.
+
+# 3. Upload, reading everything from the snapshot.
+deploy/merge-activities.sh --from-snapshot merge-artifacts/stravaboard-merge.sources.json \
+  --name "Plateau du Vercors" --pause 1440
+```
+
+`--pause <seconds>` and `--speed <m/s>` are two ways of saying the same thing:
+give one and the other follows from the distance between the two ends. The
+merged activity is stored in stravaBoard straight away, like an import; run a
+sync from the admin page to fetch its streams. The two originals keep their
+rows in stravaBoard until you delete them there too.
+
 ## How the sync works
 
 1. `GET /athlete/activities?after=<checkpoint>` pages through everything newer

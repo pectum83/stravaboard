@@ -270,6 +270,64 @@ upload-failed | upload-timeout`; `routes/admin.ts` maps each to a status.
 with the import.
 CLI façade: `apps/server/src/scripts/importActivity.ts` (see architecture.md).
 
+## Activity merge — `apps/server/src/import/mergeService.ts`
+
+Splices two consecutive activities into one when the watch stopped mid-outing,
+fabricating the missing stretch. Same plumbing as the import (`buildTcx` →
+`POST /uploads` → sport-type PUT → local upsert), shared through
+`apps/server/src/import/stravaUpload.ts` (`postUpload`, `awaitUpload`,
+`uploadError`, `plainText`, `ImportError`, `IMPORT_STREAM_KEYS`;
+`UploadDeps.uploadTimeoutMs` overrides the 90 s budget — the merge uses 180 s
+for a file thousands of points long). `importService.ts` re-exports them, so
+`routes/admin.ts` and the import script are untouched.
+
+`mergeActivities(deps, {source, name?, description?, tag?, sportType?, bridge?,
+dryRun?, snapshotPath?, allowMissingHeartrate?})` → `{summary, tcx, geojson,
+snapshot, activityId, url, alreadyExisted}`.
+
+**The snapshot is the whole design.** Strava refuses an upload overlapping an
+existing activity and the merged file starts at the first original's very
+second, so **both originals must be deleted from Strava before the upload is
+accepted** — after which they can no longer be fetched, and the local database
+is no help (`toStoredStreams` stores neither heart rate nor cadence). So:
+
+1. `source: {kind:'strava', firstActivityId, secondActivityId, athleteId?}`
+   resolves the owner from the local rows (`mixed-athletes` if they differ,
+   `unknown-source` if neither is stored), fetches both details + both stream
+   sets with `IMPORT_STREAM_KEYS`, **sorts by `start_date`** (argument order is
+   irrelevant) and writes `snapshotPath`.
+2. `source: {kind:'snapshot', path}` replays that file and makes **no** call
+   for the sources.
+
+Then: `offsetS` from the two `start_date`s → `mergeTcxStreams` (see
+algorithms.md) → `buildTcx` whose **`totalTimeS`/`distanceM` come from the
+merged samples, never from the summaries** (a summary's `elapsed_time` can
+outrun its own stream and `buildTcx` never cross-checks the two);
+`startDate` is shifted by `startShiftS` when the first stream did not start at
+zero; calories are summed.
+
+Before uploading, a **preflight** `getActivity` on each source must raise
+`NotFoundError` — a 200 aborts with `sources-still-present` rather than
+spending the upload.
+
+`external_id = stravaboard-merge-<idA>-<idB>[-<tag>]`. The duplicate answer is
+**discriminated**: an id that is one of the two sources means Strava matched
+the file against an original still in place → `sources-still-present`, nothing
+written; any other id is this same merge from an earlier run → adopted, so a
+run that died between the upload and the sport-type PUT can simply be repeated.
+`--tag v2` exists because Strava remembers an `external_id` even after the
+activity it created is deleted.
+
+`MergeError.code` ∈ `unknown-source | mixed-athletes | sources-still-present |
+heartrate-asymmetric | snapshot-unreadable`; `BridgeError` (shared) covers the
+refusals to fabricate. `upsertActivitySummary` stores the result as `'pending'`
+for the same reason as the import. The **two source rows are left in place** —
+they stay in stravaBoard (and keep counting in aggregates) until deleted by
+hand. The CLI does not trigger a sync; it prints that one is needed.
+
+CLI façade: `apps/server/src/scripts/mergeActivities.ts` + `deploy/merge-activities.sh`
+(see architecture.md).
+
 ## Strava client & sync — `apps/server/src/strava/`, `src/sync/syncService.ts`
 
 - `StravaClient.getStreams` requests `keys=SYNC_STREAM_KEYS`

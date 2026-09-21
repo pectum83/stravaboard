@@ -1,9 +1,9 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  // The import script ships with the server so it can run on the VPS, the only
-  // host whose database holds every athlete's Strava tokens.
-  entry: ['src/index.ts', 'src/scripts/importActivity.ts'],
+  // The import and merge scripts ship with the server so they can run on the
+  // VPS, the only host whose database holds every athlete's Strava tokens.
+  entry: ['src/index.ts', 'src/scripts/importActivity.ts', 'src/scripts/mergeActivities.ts'],
   format: 'esm',
   target: 'node22',
   clean: true,
