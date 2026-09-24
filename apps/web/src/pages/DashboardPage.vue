@@ -110,7 +110,7 @@ onMounted(async () => {
         <h1>stravaBoard</h1>
         <p v-if="deniedAthleteId" class="denied">
           This Strava account (athlete id <strong>{{ deniedAthleteId }}</strong
-          >) is not on the family list yet. Ask the administrator to add this id, then sign in
+          >) is not on the friends list yet. Ask the administrator to add this id, then sign in
           again.
         </p>
         <p>Sign in with your Strava account to import and analyse your activities.</p>
